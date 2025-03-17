@@ -1,0 +1,20 @@
+{
+    "timesteps": 5e5,
+    "log_interval": 50,
+    "policy_lr": 1e-4,
+    "critic_lr": 3e-4,
+    "K_epochs": 5,
+    "target_kl": 0.02,
+    "ppo_policy_dim": [
+        64,
+        64
+    ],
+    "ppo_critic_dim": [
+        128,
+        128
+    ],
+    "ppo_num_minibatch": 8,
+    "ppo_minibatch_size": 64,
+    "eval_episodes": 10,
+    "gamma": 0.99
+}
