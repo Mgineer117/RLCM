@@ -56,6 +56,7 @@ class PvtolEnv(gym.Env):
         """
         self.num_dim_x = 6
         self.num_dim_control = 2
+        self.pos_dimension = 2
 
         self.reward_scaler = 1.0
         self.control_scaler = 1e-1

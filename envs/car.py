@@ -31,6 +31,7 @@ class CarEnv(gym.Env):
         """
         self.num_dim_x = 4  # x, y, theta, v
         self.num_dim_control = 2  # u1 (angular acc), u2 (linear acc)
+        self.pos_dimension = 2
 
         self.reward_scaler = 1.0
         self.control_scaler = 1e-1

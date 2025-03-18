@@ -131,18 +131,17 @@ class Trainer:
             )
         )
 
-    def evaluate(self, dimension: int = 2):
+    def evaluate(self):
+        dimension = self.env.pos_dimension
         assert dimension in [2, 3], "Dimension must be 2 or 3"
 
-        # Define the figure and draw the reference trajectory
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.plot(
-            self.env.xref[:, 0],
-            self.env.xref[:, 1],
-            linestyle="--",
-            c="black",
-            label="Reference",
-        )
+        # Set subplot parameters based on dimension
+        subplot_kw = {"projection": "3d"} if dimension == 3 else {}
+        fig, ax = plt.subplots(subplot_kw=subplot_kw, figsize=(8, 6))
+
+        # Dynamically create the coordinate list and plot the reference trajectory
+        coords = [self.env.xref[:, i] for i in range(dimension)]
+        ax.plot(*coords, linestyle="--", c="black", label="Reference")
 
         ep_buffer = []
         for num_episodes in range(self.eval_episodes):
@@ -179,9 +178,9 @@ class Trainer:
                     )
 
                     trajectory = np.array(trajectory)
+                    coords = [trajectory[:, i] for i in range(dimension)]
                     ax.plot(
-                        trajectory[:, 0],
-                        trajectory[:, 1],
+                        *coords,
                         linestyle="-",
                         alpha=0.7,
                         c=COLORS[str(num_episodes)],
