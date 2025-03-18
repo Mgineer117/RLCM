@@ -1,7 +1,0 @@
-{"time":"2025-03-17T19:21:08.333479693-05:00","level":"INFO","msg":"stream: starting","core version":"0.19.8","symlink path":"/home/minjae/research/RLCM/wandb/run-20250317_192108-83c86150-09e6-4322-95d3-b39cd53a7a8d/logs/debug-core.log"}
-{"time":"2025-03-17T19:21:08.436398264-05:00","level":"INFO","msg":"created new stream","id":"83c86150-09e6-4322-95d3-b39cd53a7a8d"}
-{"time":"2025-03-17T19:21:08.43642326-05:00","level":"INFO","msg":"stream: started","id":"83c86150-09e6-4322-95d3-b39cd53a7a8d"}
-{"time":"2025-03-17T19:21:08.436447204-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"83c86150-09e6-4322-95d3-b39cd53a7a8d"}
-{"time":"2025-03-17T19:21:08.436459698-05:00","level":"INFO","msg":"handler: started","stream_id":"83c86150-09e6-4322-95d3-b39cd53a7a8d"}
-{"time":"2025-03-17T19:21:08.436486137-05:00","level":"INFO","msg":"sender: started","stream_id":"83c86150-09e6-4322-95d3-b39cd53a7a8d"}
-{"time":"2025-03-17T19:21:08.746923041-05:00","level":"INFO","msg":"Starting system monitor"}

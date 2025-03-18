@@ -39,10 +39,10 @@ parser.add_argument(
     "--num_runs", type=int, default=10, help="Number of samples for training."
 )  # 4096 * 32
 parser.add_argument(
-    "--actor-lr", type=float, default=0.0003, help="Base learning rate."
+    "--actor-lr", type=float, default=0.0001, help="Base learning rate."
 )
 parser.add_argument(
-    "--critic-lr", type=float, default=0.0005, help="Base learning rate."
+    "--critic-lr", type=float, default=0.0003, help="Base learning rate."
 )
 parser.add_argument(
     "--actor-dim", type=list, default=[64, 64], help="Base learning rate."
@@ -52,7 +52,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--timesteps", type=int, default=3e6, help="Number of training epochs."
+    "--timesteps", type=int, default=1e7, help="Number of training epochs."
 )
 parser.add_argument(
     "--log-intervals", type=int, default=10, help="Number of training epochs."

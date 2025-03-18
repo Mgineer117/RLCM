@@ -111,7 +111,7 @@ class CarEnv(gym.Env):
         self.state = self.state + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()
         )
-        noise = np.random.normal(loc=0.0, scale=0.05, size=4)
+        noise = np.random.normal(loc=0.0, scale=0.03, size=4)
         self.state += noise
         self.state = np.clip(self.state, X_MIN.flatten(), X_MAX.flatten())
 
