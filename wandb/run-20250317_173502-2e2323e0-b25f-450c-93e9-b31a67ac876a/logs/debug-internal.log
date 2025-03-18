@@ -1,0 +1,15 @@
+{"time":"2025-03-17T17:35:02.213453805-05:00","level":"INFO","msg":"stream: starting","core version":"0.19.8","symlink path":"/home/minjae/research/RLCM/wandb/run-20250317_173502-2e2323e0-b25f-450c-93e9-b31a67ac876a/logs/debug-core.log"}
+{"time":"2025-03-17T17:35:02.316773779-05:00","level":"INFO","msg":"created new stream","id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}
+{"time":"2025-03-17T17:35:02.316792283-05:00","level":"INFO","msg":"stream: started","id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}
+{"time":"2025-03-17T17:35:02.316865499-05:00","level":"INFO","msg":"handler: started","stream_id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}
+{"time":"2025-03-17T17:35:02.316861432-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}
+{"time":"2025-03-17T17:35:02.316909381-05:00","level":"INFO","msg":"sender: started","stream_id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}
+{"time":"2025-03-17T17:35:02.54989605-05:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-03-17T17:35:02.647878595-05:00","level":"INFO","msg":"stream: closing","id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}
+{"time":"2025-03-17T17:35:02.647895877-05:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-03-17T17:35:02.648131815-05:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-03-17T17:35:03.200394484-05:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-03-17T17:35:03.303791173-05:00","level":"INFO","msg":"handler: closed","stream_id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}
+{"time":"2025-03-17T17:35:03.303825387-05:00","level":"INFO","msg":"writer: Close: closed","stream_id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}
+{"time":"2025-03-17T17:35:03.303836577-05:00","level":"INFO","msg":"sender: closed","stream_id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}
+{"time":"2025-03-17T17:35:03.30387039-05:00","level":"INFO","msg":"stream: closed","id":"2e2323e0-b25f-450c-93e9-b31a67ac876a"}

@@ -1,7 +1,8 @@
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
-from utils import temp_seed
+
+#
 
 # CAR PARAMETERS
 v_l = 1.0
@@ -32,17 +33,19 @@ class CarEnv(gym.Env):
         """
         self.num_dim_x = 4  # x, y, theta, v
         self.num_dim_control = 2  # u1 (angular acc), u2 (linear acc)
+        self.reward_scaler = 1e-1
+        self.control_scaler = 1e-2
 
         self.time_bound = 6.0
         self.dt = 0.03
-        self.episode_length = int(self.time_bound / self.dt)
+        self.episode_len = int(self.time_bound / self.dt)
         self.t = np.arange(0, self.time_bound, self.dt)
 
-        self.action_space = spaces.Box(
-            low=UREF_MIN.flatten(), high=UREF_MAX.flatten(), dtype=np.float32
-        )
         self.observation_space = spaces.Box(
-            low=X_MIN.flatten(), high=X_MAX.flatten(), dtype=np.float32
+            low=X_MIN.flatten(), high=X_MAX.flatten(), dtype=np.float64
+        )
+        self.action_space = spaces.Box(
+            low=UREF_MIN.flatten(), high=UREF_MAX.flatten(), dtype=np.float64
         )
 
         self.x_0, self.xref_0, self.xref, self.uref = self.system_reset(
@@ -50,17 +53,15 @@ class CarEnv(gym.Env):
         )
 
     def f_func(self, x):
-        bs = x.shape[0]
-        f = np.zeros((bs, self.num_dim_x, 1))
-        f[:, 0, 0] = x[:, 3, 0] * np.cos(x[:, 2, 0])
-        f[:, 1, 0] = x[:, 3, 0] * np.sin(x[:, 2, 0])
+        f = np.zeros((self.num_dim_x,))
+        f[0] = x[3] * np.cos(x[2])
+        f[1] = x[3] * np.sin(x[2])
         return f
 
     def b_func(self, x):
-        bs = x.shape[0]
-        B = np.zeros((bs, self.num_dim_x, self.num_dim_control))
-        B[:, 2, 0] = 1
-        B[:, 3, 1] = 1
+        B = np.zeros((self.num_dim_x, self.num_dim_control))
+        B[2, 0] = 1
+        B[3, 1] = 1
         return B
 
     def system_reset(self, time_bound, t):
@@ -85,9 +86,12 @@ class CarEnv(gym.Env):
                 u += np.array(
                     [weight[0] * np.sin(freq * _t / time_bound * 2 * np.pi), 0]
                 )
-            f_x = self.f_func(np.array([xref[-1]]))
-            B_x = self.b_func(np.array([xref[-1]]))
-            xref.append(xref[-1] + self.dt * (f_x + np.matmul(B_x, u.reshape(-1, 1))))
+            f_x = self.f_func(xref[-1])
+            B_x = self.b_func(xref[-1])
+
+            xref.append(
+                xref[-1] + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
+            )
             uref.append(u)
 
         return x_0, xref_0, np.array(xref), np.array(uref)
@@ -100,17 +104,31 @@ class CarEnv(gym.Env):
 
     def step(self, action):
         self.time_steps += 1
-        action = np.array(action).reshape(1, self.num_dim_control, 1)
-        f_x = self.f_func(np.array([self.state]))
-        B_x = self.b_func(np.array([self.state]))
 
-        self.state = self.state + self.dt * (f_x + np.matmul(B_x, action))
-        self.state = np.clip(self.state, X_MIN, X_MAX)
+        f_x = self.f_func(self.state)
+        B_x = self.b_func(self.state)
 
-        reward = -np.linalg.norm(self.xref[self.time_steps] - self.state, ord=2)
-        done = self.time_steps == self.episode_length
+        self.state = self.state + self.dt * (
+            f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()
+        )
+        self.state = np.clip(self.state, X_MIN.flatten(), X_MAX.flatten())
 
-        return self.state.squeeze(), reward, done, False, {}
+        tracking_error = np.linalg.norm(self.xref[self.time_steps] - self.state, ord=2)
+        control_effort = np.linalg.norm(action, ord=2)
+
+        reward = -(
+            self.reward_scaler * tracking_error + self.control_scaler * control_effort
+        )
+        termination = False
+        truncation = self.time_steps == self.episode_len
+
+        return (
+            self.state.squeeze(),
+            reward,
+            termination,
+            truncation,
+            {"tracking_error": tracking_error, "control_effort": control_effort},
+        )
 
     def render(self, mode="human"):
         pass

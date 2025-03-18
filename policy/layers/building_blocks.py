@@ -16,7 +16,7 @@ class MLP(nn.Module):
     ) -> None:
         super().__init__()
 
-        hidden_dims = [input_dim] + list(hidden_dims)
+        hidden_dims = [input_dim] + hidden_dims
         model = []
 
         # Example: Initialization for a layer based on activation function

@@ -6,20 +6,20 @@ import torch.nn as nn
 import numpy as np
 
 # from utils.torch import get_flat_grad_from, get_flat_params_from, set_flat_params_to
-from utils.misc import estimate_advantages
+from utils.rl import estimate_advantages
 
-# from policy.layers.building_blocks import MLP
+# from actor.layers.building_blocks import MLP
 from policy.base import Base
 
 # from models.layers.ppo_networks import PPO_Policy, PPO_Critic
 
 
-class PPO_Learner(Base):
+class PPO(Base):
     def __init__(
         self,
-        policy: nn.Module,
+        actor: nn.Module,
         critic: nn.Module,
-        policy_lr: float = 3e-4,
+        actor_lr: float = 3e-4,
         critic_lr: float = 5e-4,
         num_minibatch: int = 8,
         minibatch_size: int = 256,
@@ -32,9 +32,10 @@ class PPO_Learner(Base):
         K: int = 5,
         device: str = "cpu",
     ):
-        super(PPO_Learner, self).__init__()
+        super(PPO, self).__init__()
 
         # constants
+        self.name = "PPO"
         self.device = device
 
         self.num_minibatch = num_minibatch
@@ -49,12 +50,12 @@ class PPO_Learner(Base):
         self._forward_steps = 0
 
         # trainable networks
-        self.policy = policy
+        self.actor = actor
         self.critic = critic
 
         self.optimizer = torch.optim.Adam(
             [
-                {"params": self.policy.parameters(), "lr": policy_lr},
+                {"params": self.actor.parameters(), "lr": actor_lr},
                 {"params": self.critic.parameters(), "lr": critic_lr},
             ]
         )
@@ -70,7 +71,7 @@ class PPO_Learner(Base):
         self._forward_steps += 1
         obs = torch.from_numpy(obs).to(self._dtype).to(self.device)
 
-        a, metaData = self.policy(obs["observation"], deterministic=deterministic)
+        a, metaData = self.actor(obs, deterministic=deterministic)
 
         return a, {
             "probs": metaData["probs"],
@@ -108,7 +109,7 @@ class PPO_Learner(Base):
         # Mini-batch training
         batch_size = states.size(0)
 
-        # List to track policy loss over minibatches
+        # List to track actor loss over minibatches
         losses = []
         actor_losses = []
         value_losses = []
@@ -142,10 +143,10 @@ class PPO_Learner(Base):
                 # Track value loss for logging
                 value_losses.append(value_loss.item())
 
-                # 2. Policy Update
-                _, metaData = self.policy(mb_states)
-                logprobs = self.policy.log_prob(metaData["dist"], mb_actions)
-                entropy = self.policy.entropy(metaData["dist"])
+                # 2. actor Update
+                _, metaData = self.actor(mb_states)
+                logprobs = self.actor.log_prob(metaData["dist"], mb_actions)
+                entropy = self.actor.entropy(metaData["dist"])
                 ratios = torch.exp(logprobs - mb_old_logprobs)
 
                 surr1 = ratios * mb_advantages
@@ -155,7 +156,7 @@ class PPO_Learner(Base):
                 actor_loss = -torch.min(surr1, surr2).mean()
                 entropy_loss = self._entropy_scaler * entropy.mean()
 
-                # Track policy loss for logging
+                # Track actor loss for logging
                 actor_losses.append(actor_loss.item())
                 entropy_losses.append(entropy_loss.item())
 
@@ -180,8 +181,8 @@ class PPO_Learner(Base):
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5)
                 grad_dict = self.compute_gradient_norm(
-                    [self.policy, self.critic],
-                    ["policy", "critic"],
+                    [self.actor, self.critic],
+                    ["actor", "critic"],
                     dir="PPO",
                     device=self.device,
                 )
@@ -206,8 +207,8 @@ class PPO_Learner(Base):
         }
         grad_dict = self.average_dict_values(grad_dicts)
         norm_dict = self.compute_weight_norm(
-            [self.policy, self.critic],
-            ["policy", "critic"],
+            [self.actor, self.critic],
+            ["actor", "critic"],
             dir="PPO",
             device=self.device,
         )
@@ -245,7 +246,7 @@ class PPO_Learner(Base):
         return avg_dict
 
     def save_model(self, logdir, epoch=None, is_best=False):
-        self.policy = self.policy.cpu()
+        self.actor = self.actor.cpu()
         self.critic = self.critic.cpu()
 
         # save checkpoint
@@ -254,8 +255,8 @@ class PPO_Learner(Base):
         else:
             path = os.path.join(logdir, "model_" + str(epoch) + ".p")
         pickle.dump(
-            (self.policy, self.critic),
+            (self.actor, self.critic),
             open(path, "wb"),
         )
-        self.policy = self.policy.to(self.device)
+        self.actor = self.actor.to(self.device)
         self.critic = self.critic.to(self.device)

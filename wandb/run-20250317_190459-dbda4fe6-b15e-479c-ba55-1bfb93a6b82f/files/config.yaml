@@ -1,0 +1,91 @@
+_wandb:
+    value:
+        cli_version: 0.19.8
+        m: []
+        python_version: 3.12.9
+        t:
+            "1":
+                - 1
+                - 55
+            "2":
+                - 1
+                - 55
+            "3":
+                - 13
+                - 14
+                - 16
+                - 23
+                - 55
+                - 61
+            "4": 3.12.9
+            "5": 0.19.8
+            "8":
+                - 5
+            "12": 0.19.8
+            "13": linux-x86_64
+K_epochs:
+    value: 5
+action_dim:
+    value: 2
+actor_dim:
+    value:
+        - 64
+        - 64
+actor_lr:
+    value: 0.0003
+algo_name:
+    value: ppo
+critic_dim:
+    value:
+        - 128
+        - 128
+critic_lr:
+    value: 0.0005
+device:
+    value: cuda:0
+entropy_scaler:
+    value: 0.001
+episode_len:
+    value: 200
+eps:
+    value: 0.2
+eval_episodes:
+    value: 10
+eval_num:
+    value: 10
+gae:
+    value: 0.95
+gamma:
+    value: 0.99
+gpu_idx:
+    value: 0
+group:
+    value: 03-17_19-04-58.754753-b2ba
+load_pretrained_model:
+    value: false
+log_intervals:
+    value: 10
+logdir:
+    value: log/train_log/03-17_19-04-58.754753-b2ba
+minibatch_size:
+    value: 512
+name:
+    value: ppo-car-b2ba-seed:1825
+num_minibatch:
+    value: 10
+num_runs:
+    value: 10
+project:
+    value: Exp
+seed:
+    value: 1825
+state_dim:
+    value: 4
+target_kl:
+    value: 0.02
+task:
+    value: car
+timesteps:
+    value: 100000
+use_cuda:
+    value: true

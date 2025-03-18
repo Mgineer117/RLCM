@@ -1,0 +1,42 @@
+[36;1mSaving config:
+[0m
+{
+    "K_epochs":	5,
+    "action_dim":	2,
+    "actor_dim":	[
+        64,
+        64
+    ],
+    "actor_lr":	0.001,
+    "algo_name":	"ppo",
+    "critic_dim":	[
+        128,
+        128
+    ],
+    "critic_lr":	0.001,
+    "device":	"cuda:0",
+    "entropy_scaler":	0.001,
+    "episode_len":	200,
+    "eps":	0.2,
+    "eval_episodes":	10,
+    "eval_num":	10,
+    "gae":	0.95,
+    "gamma":	0.99,
+    "gpu_idx":	0,
+    "group":	"03-17_17-49-49.671539-061c",
+    "load_pretrained_model":	false,
+    "log_intervals":	10,
+    "logdir":	"log/train_log/03-17_17-49-49.671539-061c",
+    "minibatch_size":	128,
+    "name":	"ppo-car-061c-seed:1825",
+    "num_minibatch":	10,
+    "num_runs":	10,
+    "project":	"Exp",
+    "seed":	1825,
+    "state_dim":	4,
+    "target_kl":	0.02,
+    "task":	"car",
+    "timesteps":	15,
+    "use_cuda":	true
+}
+PPO Training (Timesteps):   0%|                                                                                                                                                                                                                                                                                                                         | 0/15 [00:00<?, ?it/s]

@@ -1,0 +1,7 @@
+{"time":"2025-03-17T18:03:08.558158809-05:00","level":"INFO","msg":"stream: starting","core version":"0.19.8","symlink path":"/home/minjae/research/RLCM/wandb/run-20250317_180308-7dbf616c-ce1d-4e35-a573-58312c131ef6/logs/debug-core.log"}
+{"time":"2025-03-17T18:03:08.661525158-05:00","level":"INFO","msg":"created new stream","id":"7dbf616c-ce1d-4e35-a573-58312c131ef6"}
+{"time":"2025-03-17T18:03:08.661543802-05:00","level":"INFO","msg":"stream: started","id":"7dbf616c-ce1d-4e35-a573-58312c131ef6"}
+{"time":"2025-03-17T18:03:08.661591721-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"7dbf616c-ce1d-4e35-a573-58312c131ef6"}
+{"time":"2025-03-17T18:03:08.661600898-05:00","level":"INFO","msg":"handler: started","stream_id":"7dbf616c-ce1d-4e35-a573-58312c131ef6"}
+{"time":"2025-03-17T18:03:08.661641834-05:00","level":"INFO","msg":"sender: started","stream_id":"7dbf616c-ce1d-4e35-a573-58312c131ef6"}
+{"time":"2025-03-17T18:03:13.622826214-05:00","level":"INFO","msg":"Starting system monitor"}

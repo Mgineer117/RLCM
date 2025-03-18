@@ -1,0 +1,74 @@
+[36;1mSaving config:
+[0m
+{
+    "K_epochs":	5,
+    "action_dim":	2,
+    "actor_dim":	[
+        64,
+        64
+    ],
+    "actor_lr":	0.0003,
+    "algo_name":	"ppo",
+    "critic_dim":	[
+        128,
+        128
+    ],
+    "critic_lr":	0.0005,
+    "device":	"cuda:0",
+    "entropy_scaler":	0.001,
+    "episode_len":	200,
+    "eps":	0.2,
+    "eval_episodes":	10,
+    "eval_num":	10,
+    "gae":	0.95,
+    "gamma":	0.99,
+    "gpu_idx":	0,
+    "group":	"03-17_19-07-17.270206-36cd",
+    "load_pretrained_model":	false,
+    "log_intervals":	10,
+    "logdir":	"log/train_log/03-17_19-07-17.270206-36cd",
+    "minibatch_size":	512,
+    "name":	"ppo-car-36cd-seed:1825",
+    "num_minibatch":	10,
+    "num_runs":	10,
+    "project":	"Exp",
+    "seed":	1825,
+    "state_dim":	4,
+    "target_kl":	0.02,
+    "task":	"car",
+    "timesteps":	3000000.0,
+    "use_cuda":	true
+}
+PPO Training (Timesteps):  43%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████▊                                                                                                                                                                                 | 1290240/3000000.0 [05:06<06:46, 4210.73it/s]
+Traceback (most recent call last):
+  File "/home/minjae/research/RLCM/main.py", line 196, in <module>
+    run(args, seed, unique_id, exp_time)
+  File "/home/minjae/research/RLCM/main.py", line 176, in run
+    trainer.train()
+  File "/home/minjae/research/RLCM/trainer/online_trainer.py", line 69, in train
+    def train(self) -> dict[str, float]:
+
+  File "/home/minjae/research/RLCM/policy/ppo.py", line 181, in learn
+    loss.backward()
+  File "/home/minjae/miniconda3/envs/rlcm/lib/python3.12/site-packages/torch/_tensor.py", line 626, in backward
+    torch.autograd.backward(
+  File "/home/minjae/miniconda3/envs/rlcm/lib/python3.12/site-packages/torch/autograd/__init__.py", line 347, in backward
+    _engine_run_backward(
+  File "/home/minjae/miniconda3/envs/rlcm/lib/python3.12/site-packages/torch/autograd/graph.py", line 823, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+Exception ignored in atexit callback: <function _start_and_connect_service.<locals>.teardown_atexit at 0x7077e38572e0>
+Traceback (most recent call last):
+  File "/home/minjae/miniconda3/envs/rlcm/lib/python3.12/site-packages/wandb/sdk/lib/service_connection.py", line 94, in teardown_atexit
+    conn.teardown(hooks.exit_code)
+  File "/home/minjae/miniconda3/envs/rlcm/lib/python3.12/site-packages/wandb/sdk/lib/service_connection.py", line 226, in teardown
+    self._router.join()
+  File "/home/minjae/miniconda3/envs/rlcm/lib/python3.12/site-packages/wandb/sdk/interface/router.py", line 75, in join
+    self._thread.join()
+  File "/home/minjae/miniconda3/envs/rlcm/lib/python3.12/threading.py", line 1149, in join
+    self._wait_for_tstate_lock()
+  File "/home/minjae/miniconda3/envs/rlcm/lib/python3.12/threading.py", line 1169, in _wait_for_tstate_lock
+    if lock.acquire(block, timeout):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt:

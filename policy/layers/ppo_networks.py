@@ -7,7 +7,7 @@ from torch.distributions import MultivariateNormal, Categorical
 from policy.layers.building_blocks import MLP
 
 
-class PPO_Policy(nn.Module):
+class PPO_Actor(nn.Module):
     """
     Psi Advantage Function: Psi(s,a) - (1/|A|)SUM_a' Psi(s, a')
     """
@@ -20,7 +20,7 @@ class PPO_Policy(nn.Module):
         activation: nn.Module = nn.Tanh(),
         is_discrete: bool = False,
     ):
-        super(PPO_Policy, self).__init__()
+        super(PPO_Actor, self).__init__()
 
         # |A| duplicate networks
         self.act = activation
