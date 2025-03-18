@@ -1,5 +1,8 @@
 import torch
 
+from envs.car import CarEnv
+from envs.pvtol import PvtolEnv
+
 
 def estimate_advantages(
     rewards, terminals, values, gamma=0.99, gae=0.95, device=torch.device("cpu")
@@ -26,6 +29,23 @@ def estimate_advantages(
     # advantages = (advantages - advantages.mean()) / advantages.std()
     advantages, returns = advantages.to(device), returns.to(device)
     return advantages, returns
+
+
+def call_env(args):
+    task = args.task
+
+    if task == "car":
+        env = CarEnv()
+    elif task == "pvtol":
+        env = PvtolEnv()
+    else:
+        raise NotImplementedError(f"{task} is not implemented.")
+
+    args.state_dim = env.observation_space.shape[0]
+    args.action_dim = env.action_space.shape[0]
+    args.episode_len = env.episode_len
+
+    return env
 
 
 def get_policy(args):

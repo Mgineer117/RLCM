@@ -1,0 +1,15 @@
+{"time":"2025-03-17T22:34:23.16173603-05:00","level":"INFO","msg":"stream: starting","core version":"0.19.8","symlink path":"/home/minjae/Documents/Minjae/UIUC/Research/RL-CCMs/RLCM/wandb/run-20250317_223423-fc68570e-0772-4c6b-8a91-e236b72f2c4d/logs/debug-core.log"}
+{"time":"2025-03-17T22:34:23.371778477-05:00","level":"INFO","msg":"created new stream","id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}
+{"time":"2025-03-17T22:34:23.371826628-05:00","level":"INFO","msg":"stream: started","id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}
+{"time":"2025-03-17T22:34:23.371927565-05:00","level":"INFO","msg":"writer: Do: started","stream_id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}
+{"time":"2025-03-17T22:34:23.371976154-05:00","level":"INFO","msg":"handler: started","stream_id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}
+{"time":"2025-03-17T22:34:23.371963073-05:00","level":"INFO","msg":"sender: started","stream_id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}
+{"time":"2025-03-17T22:34:23.685778467-05:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-03-17T22:34:23.951832721-05:00","level":"INFO","msg":"stream: closing","id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}
+{"time":"2025-03-17T22:34:23.951884467-05:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-03-17T22:34:23.952613606-05:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-03-17T22:34:24.516797481-05:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-03-17T22:34:24.734635788-05:00","level":"INFO","msg":"handler: closed","stream_id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}
+{"time":"2025-03-17T22:34:24.734662347-05:00","level":"INFO","msg":"writer: Close: closed","stream_id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}
+{"time":"2025-03-17T22:34:24.734711408-05:00","level":"INFO","msg":"sender: closed","stream_id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}
+{"time":"2025-03-17T22:34:24.734840807-05:00","level":"INFO","msg":"stream: closed","id":"fc68570e-0772-4c6b-8a91-e236b72f2c4d"}

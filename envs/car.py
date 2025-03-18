@@ -2,8 +2,6 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-#
-
 # CAR PARAMETERS
 v_l = 1.0
 v_h = 2.0
@@ -33,8 +31,9 @@ class CarEnv(gym.Env):
         """
         self.num_dim_x = 4  # x, y, theta, v
         self.num_dim_control = 2  # u1 (angular acc), u2 (linear acc)
-        self.reward_scaler = 1e-1
-        self.control_scaler = 1e-2
+
+        self.reward_scaler = 1.0
+        self.control_scaler = 1e-1
 
         self.time_bound = 6.0
         self.dt = 0.03
@@ -111,16 +110,16 @@ class CarEnv(gym.Env):
         self.state = self.state + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()
         )
-        noise = np.random.normal(loc=0.0, scale=0.03, size=4)
+        noise = np.random.normal(loc=0.0, scale=0.03, size=self.num_dim_x)
         self.state += noise
         self.state = np.clip(self.state, X_MIN.flatten(), X_MAX.flatten())
 
         tracking_error = np.linalg.norm(self.xref[self.time_steps] - self.state, ord=2)
         control_effort = np.linalg.norm(action, ord=2)
 
-        reward = -(
-            self.reward_scaler * tracking_error + self.control_scaler * control_effort
-        )
+        reward = self.reward_scaler * (
+            1 / (tracking_error + 1)
+        ) + self.control_scaler * (1 / (control_effort + 1))
         termination = False
         truncation = self.time_steps == self.episode_len
 

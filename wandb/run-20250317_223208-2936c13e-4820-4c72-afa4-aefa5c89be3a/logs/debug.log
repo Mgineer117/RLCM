@@ -1,0 +1,23 @@
+2025-03-17 22:32:08,022 INFO    MainThread:15186 [wandb_setup.py:_flush():67] Current SDK version is 0.19.8
+2025-03-17 22:32:08,023 INFO    MainThread:15186 [wandb_setup.py:_flush():67] Configure stats pid to 15186
+2025-03-17 22:32:08,023 INFO    MainThread:15186 [wandb_setup.py:_flush():67] Loading settings from /home/minjae/.config/wandb/settings
+2025-03-17 22:32:08,023 INFO    MainThread:15186 [wandb_setup.py:_flush():67] Loading settings from /home/minjae/Documents/Minjae/UIUC/Research/RL-CCMs/RLCM/wandb/settings
+2025-03-17 22:32:08,023 INFO    MainThread:15186 [wandb_setup.py:_flush():67] Loading settings from environment variables
+2025-03-17 22:32:08,023 INFO    MainThread:15186 [wandb_init.py:setup_run_log_directory():647] Logging user logs to /home/minjae/Documents/Minjae/UIUC/Research/RL-CCMs/RLCM/wandb/run-20250317_223208-2936c13e-4820-4c72-afa4-aefa5c89be3a/logs/debug.log
+2025-03-17 22:32:08,023 INFO    MainThread:15186 [wandb_init.py:setup_run_log_directory():648] Logging internal logs to /home/minjae/Documents/Minjae/UIUC/Research/RL-CCMs/RLCM/wandb/run-20250317_223208-2936c13e-4820-4c72-afa4-aefa5c89be3a/logs/debug-internal.log
+2025-03-17 22:32:08,023 INFO    MainThread:15186 [wandb_init.py:init():761] calling init triggers
+2025-03-17 22:32:08,024 INFO    MainThread:15186 [wandb_init.py:init():766] wandb.init called with sweep_config: {}
+config: {'project': 'Exp', 'logdir': 'log/train_log/03-17_22-32-06.706823-1bae', 'group': '03-17_22-32-06.706823-1bae', 'name': 'ppo-pvtol-1bae-seed:1825', 'task': 'pvtol', 'algo_name': 'ppo', 'seed': 1825, 'num_runs': 10, 'actor_lr': 0.0001, 'critic_lr': 0.0003, 'actor_dim': [64, 64], 'critic_dim': [128, 128], 'timesteps': 10000000.0, 'log_interval': 50, 'eval_episodes': 10, 'eval_num': 10, 'num_minibatch': 8, 'minibatch_size': 64, 'K_epochs': 5, 'eps': 0.2, 'target_kl': 0.02, 'gae': 0.95, 'entropy_scaler': 0.001, 'gamma': 0.99, 'load_pretrained_model': False, 'gpu_idx': 0, 'use_cuda': True, 'device': device(type='cpu'), 'state_dim': 6, 'action_dim': 2, 'episode_len': 200, '_wandb': {}}
+2025-03-17 22:32:08,024 INFO    MainThread:15186 [wandb_init.py:init():784] starting backend
+2025-03-17 22:32:08,024 INFO    MainThread:15186 [wandb_init.py:init():788] sending inform_init request
+2025-03-17 22:32:08,031 INFO    MainThread:15186 [backend.py:_multiprocessing_setup():101] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2025-03-17 22:32:08,031 INFO    MainThread:15186 [wandb_init.py:init():798] backend started and connected
+2025-03-17 22:32:08,034 INFO    MainThread:15186 [wandb_init.py:init():891] updated telemetry
+2025-03-17 22:32:08,040 INFO    MainThread:15186 [wandb_init.py:init():915] communicating run to backend with 90.0 second timeout
+2025-03-17 22:32:08,716 INFO    MainThread:15186 [wandb_init.py:init():990] starting run threads in backend
+2025-03-17 22:32:08,811 INFO    MainThread:15186 [wandb_run.py:_console_start():2375] atexit reg
+2025-03-17 22:32:08,812 INFO    MainThread:15186 [wandb_run.py:_redirect():2227] redirect: wrap_raw
+2025-03-17 22:32:08,812 INFO    MainThread:15186 [wandb_run.py:_redirect():2292] Wrapping output streams.
+2025-03-17 22:32:08,812 INFO    MainThread:15186 [wandb_run.py:_redirect():2315] Redirects installed.
+2025-03-17 22:32:08,815 INFO    MainThread:15186 [wandb_init.py:init():1032] run started, returning control to user process
+2025-03-17 22:32:08,853 INFO    MsgRouterThr:15186 [mailbox.py:close():129] Closing mailbox, abandoning 2 handles.

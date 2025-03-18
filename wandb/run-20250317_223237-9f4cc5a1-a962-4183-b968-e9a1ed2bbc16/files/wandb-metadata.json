@@ -1,0 +1,31 @@
+{
+  "os": "Linux-6.11.0-19-generic-x86_64-with-glibc2.39",
+  "python": "CPython 3.11.11",
+  "startedAt": "2025-03-18T03:32:37.406388Z",
+  "program": "/home/minjae/Documents/Minjae/UIUC/Research/RL-CCMs/RLCM/main.py",
+  "codePath": "main.py",
+  "git": {
+    "remote": "https://github.com/Mgineer117/RLCM",
+    "commit": "b86bc0c1683adf98746ca87e32c5b4949e3f440e"
+  },
+  "email": "mj.research117@gmail.com",
+  "root": "/home/minjae/Documents/Minjae/UIUC/Research/RL-CCMs/RLCM",
+  "host": "minjae-laptop",
+  "executable": "/home/minjae/miniconda3/envs/rlcm/bin/python",
+  "codePathLocal": "main.py",
+  "cpu_count": 4,
+  "cpu_count_logical": 8,
+  "disk": {
+    "/": {
+      "total": "1964618686464",
+      "used": "173914636288"
+    }
+  },
+  "memory": {
+    "total": "16428036096"
+  },
+  "cpu": {
+    "count": 4,
+    "countLogical": 8
+  }
+}

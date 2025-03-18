@@ -1,0 +1,8 @@
+matplotlib
+numpy
+gymnasium
+pandas
+torch
+wandb
+tensorboard
+tqdm

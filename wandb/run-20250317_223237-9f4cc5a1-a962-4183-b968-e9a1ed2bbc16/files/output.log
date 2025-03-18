@@ -1,0 +1,45 @@
+[36;1mSaving config:
+[0m
+{
+    "K_epochs":	5,
+    "action_dim":	2,
+    "actor_dim":	[
+        64,
+        64
+    ],
+    "actor_lr":	0.0001,
+    "algo_name":	"ppo",
+    "critic_dim":	[
+        128,
+        128
+    ],
+    "critic_lr":	0.0003,
+    "device":	"cpu",
+    "entropy_scaler":	0.001,
+    "episode_len":	200,
+    "eps":	0.2,
+    "eval_episodes":	10,
+    "eval_num":	10,
+    "gae":	0.95,
+    "gamma":	0.99,
+    "gpu_idx":	0,
+    "group":	"03-17_22-32-35.318742-3de1",
+    "load_pretrained_model":	false,
+    "log_interval":	50,
+    "logdir":	"log/train_log/03-17_22-32-35.318742-3de1",
+    "minibatch_size":	64,
+    "name":	"ppo-pvtol-3de1-seed:1825",
+    "num_minibatch":	8,
+    "num_runs":	10,
+    "project":	"Exp",
+    "seed":	1825,
+    "state_dim":	6,
+    "target_kl":	0.02,
+    "task":	"pvtol",
+    "timesteps":	10000000.0,
+    "use_cuda":	true
+}
+PPO Training (Timesteps):   0%|                                                                                                                             | 0/10000000.0 [00:00<?, ?it/s]
+Main thread worker 0 failed: operands could not be broadcast together with shapes (6,) (4,) (6,)
+Backend tkagg is interactive backend. Turning interactive mode on.
+[None]

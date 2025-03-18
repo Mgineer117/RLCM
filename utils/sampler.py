@@ -112,9 +112,7 @@ class OnlineSampler(Base):
         self.rounds = rounds
 
         if verbose:
-            print("====================")
             print("Sampling Parameters:")
-            print("====================")
             print(
                 f"Cores (usage)/(given)     : {self.num_workers_per_round}/{self.num_cores} out of {multiprocessing.cpu_count()}"
             )

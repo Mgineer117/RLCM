@@ -1,0 +1,22 @@
+2025-03-17 22:20:26,155 INFO    MainThread:13486 [wandb_setup.py:_flush():67] Current SDK version is 0.19.8
+2025-03-17 22:20:26,155 INFO    MainThread:13486 [wandb_setup.py:_flush():67] Configure stats pid to 13486
+2025-03-17 22:20:26,155 INFO    MainThread:13486 [wandb_setup.py:_flush():67] Loading settings from /home/minjae/.config/wandb/settings
+2025-03-17 22:20:26,155 INFO    MainThread:13486 [wandb_setup.py:_flush():67] Loading settings from /home/minjae/Documents/Minjae/UIUC/Research/RL-CCMs/RLCM/wandb/settings
+2025-03-17 22:20:26,155 INFO    MainThread:13486 [wandb_setup.py:_flush():67] Loading settings from environment variables
+2025-03-17 22:20:26,155 INFO    MainThread:13486 [wandb_init.py:setup_run_log_directory():647] Logging user logs to /home/minjae/Documents/Minjae/UIUC/Research/RL-CCMs/RLCM/wandb/run-20250317_222026-4c67f62a-4cc5-4eab-82fe-4f44f703516b/logs/debug.log
+2025-03-17 22:20:26,155 INFO    MainThread:13486 [wandb_init.py:setup_run_log_directory():648] Logging internal logs to /home/minjae/Documents/Minjae/UIUC/Research/RL-CCMs/RLCM/wandb/run-20250317_222026-4c67f62a-4cc5-4eab-82fe-4f44f703516b/logs/debug-internal.log
+2025-03-17 22:20:26,156 INFO    MainThread:13486 [wandb_init.py:init():761] calling init triggers
+2025-03-17 22:20:26,156 INFO    MainThread:13486 [wandb_init.py:init():766] wandb.init called with sweep_config: {}
+config: {'project': 'Exp', 'logdir': 'log/train_log/03-17_22-20-24.867974-3d17', 'group': '03-17_22-20-24.867974-3d17', 'name': 'ppo-pvtol-3d17-seed:1825', 'task': 'pvtol', 'algo_name': 'ppo', 'seed': 1825, 'num_runs': 10, 'actor_lr': 0.0001, 'critic_lr': 0.0003, 'actor_dim': [64, 64], 'critic_dim': [128, 128], 'timesteps': 10000000.0, 'log_interval': 50, 'eval_episodes': 10, 'eval_num': 10, 'num_minibatch': 8, 'minibatch_size': 64, 'K_epochs': 5, 'eps': 0.2, 'target_kl': 0.02, 'gae': 0.95, 'entropy_scaler': 0.001, 'gamma': 0.99, 'load_pretrained_model': False, 'gpu_idx': 0, 'use_cuda': True, 'device': device(type='cpu'), 'state_dim': 4, 'action_dim': 2, 'episode_len': 200, '_wandb': {}}
+2025-03-17 22:20:26,156 INFO    MainThread:13486 [wandb_init.py:init():784] starting backend
+2025-03-17 22:20:26,156 INFO    MainThread:13486 [wandb_init.py:init():788] sending inform_init request
+2025-03-17 22:20:26,162 INFO    MainThread:13486 [backend.py:_multiprocessing_setup():101] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2025-03-17 22:20:26,162 INFO    MainThread:13486 [wandb_init.py:init():798] backend started and connected
+2025-03-17 22:20:26,164 INFO    MainThread:13486 [wandb_init.py:init():891] updated telemetry
+2025-03-17 22:20:26,173 INFO    MainThread:13486 [wandb_init.py:init():915] communicating run to backend with 90.0 second timeout
+2025-03-17 22:20:26,886 INFO    MainThread:13486 [wandb_init.py:init():990] starting run threads in backend
+2025-03-17 22:20:26,975 INFO    MainThread:13486 [wandb_run.py:_console_start():2375] atexit reg
+2025-03-17 22:20:26,975 INFO    MainThread:13486 [wandb_run.py:_redirect():2227] redirect: wrap_raw
+2025-03-17 22:20:26,976 INFO    MainThread:13486 [wandb_run.py:_redirect():2292] Wrapping output streams.
+2025-03-17 22:20:26,976 INFO    MainThread:13486 [wandb_run.py:_redirect():2315] Redirects installed.
+2025-03-17 22:20:26,979 INFO    MainThread:13486 [wandb_init.py:init():1032] run started, returning control to user process
