@@ -148,8 +148,8 @@ class Trainer:
             ep_reward, ep_tracking_error, ep_control_effort = 0, 0, 0
 
             # Env initialization
-            obs, _ = self.env.reset(seed=self.seed)
-            trajectory = [obs[:dimension]]
+            obs, infos = self.env.reset(seed=self.seed)
+            trajectory = [infos["x"][:dimension]]
 
             done = False
             while not done:
@@ -160,7 +160,7 @@ class Trainer:
                         a = np.array([a.item()])
 
                 next_obs, rew, term, trunc, infos = self.env.step(a)
-                trajectory.append(next_obs[:dimension])  # Store trajectory point
+                trajectory.append(infos["x"][:dimension])  # Store trajectory point
                 done = term or trunc
 
                 obs = next_obs
@@ -208,10 +208,10 @@ class Trainer:
         eval_dict = {
             f"{self.policy.name}/eval/rew_mean": rew_mean,
             f"{self.policy.name}/eval/rew_std": rew_std,
-            f"{self.policy.name}/eval/trk_mean": trk_mean,
-            f"{self.policy.name}/eval/trk_std": trk_std,
-            f"{self.policy.name}/eval/ctr_mean": ctr_mean,
-            f"{self.policy.name}/eval/ctr_std": ctr_std,
+            f"{self.policy.name}/eval/trk_error_mean": trk_mean,
+            f"{self.policy.name}/eval/trk_error_std": trk_std,
+            f"{self.policy.name}/eval/ctr_error_mean": ctr_mean,
+            f"{self.policy.name}/eval/ctr_error_std": ctr_std,
         }
 
         return eval_dict, image_array

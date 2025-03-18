@@ -43,7 +43,7 @@ def get_args():
     )
 
     parser.add_argument(
-        "--timesteps", type=int, default=1e7, help="Number of training epochs."
+        "--timesteps", type=int, default=None, help="Number of training epochs."
     )
     parser.add_argument(
         "--log-interval", type=int, default=None, help="Number of training epochs."

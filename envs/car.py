@@ -34,7 +34,7 @@ class CarEnv(gym.Env):
         self.pos_dimension = 2
 
         self.reward_scaler = 1.0
-        self.control_scaler = 1e-1
+        self.control_scaler = 1e-2
 
         self.time_bound = 6.0
         self.dt = 0.03
@@ -99,23 +99,25 @@ class CarEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.time_steps = 0
-        self.state = self.x_0.copy()
-        return self.x_0, {}
+        self.x_t = self.x_0.copy()
+        self.state = self.x_t - self.xref[self.time_steps]
+        return self.state, {"x": self.x_t}
 
     def step(self, action):
         self.time_steps += 1
 
-        f_x = self.f_func(self.state)
-        B_x = self.b_func(self.state)
+        f_x = self.f_func(self.x_t)
+        B_x = self.b_func(self.x_t)
 
-        self.state = self.state + self.dt * (
+        self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()
         )
         noise = np.random.normal(loc=0.0, scale=0.03, size=self.num_dim_x)
-        self.state += noise
-        self.state = np.clip(self.state, X_MIN.flatten(), X_MAX.flatten())
+        self.x_t += noise
+        self.x_t = np.clip(self.x_t, X_MIN.flatten(), X_MAX.flatten())
+        self.state = self.x_t - self.xref[self.time_steps]
 
-        tracking_error = np.linalg.norm(self.xref[self.time_steps] - self.state, ord=2)
+        tracking_error = np.linalg.norm(self.state, ord=2)
         control_effort = np.linalg.norm(action, ord=2)
 
         reward = self.reward_scaler * (
@@ -129,7 +131,11 @@ class CarEnv(gym.Env):
             reward,
             termination,
             truncation,
-            {"tracking_error": tracking_error, "control_effort": control_effort},
+            {
+                "x": self.x_t,
+                "tracking_error": tracking_error,
+                "control_effort": control_effort,
+            },
         )
 
     def render(self, mode="human"):
