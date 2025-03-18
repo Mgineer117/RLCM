@@ -132,6 +132,9 @@ class Trainer:
         )
 
     def evaluate(self):
+        """
+        Given one ref, show tracking performance
+        """
         dimension = self.env.pos_dimension
         assert dimension in [2, 3], "Dimension must be 2 or 3"
 
@@ -141,6 +144,14 @@ class Trainer:
 
         # Dynamically create the coordinate list and plot the reference trajectory
         coords = [self.env.xref[:, i] for i in range(dimension)]
+        first_point = [c[0] for c in coords]
+        ax.scatter(
+            *first_point,
+            marker="*",
+            alpha=0.7,
+            c="black",
+            s=80.0,
+        )
         ax.plot(*coords, linestyle="--", c="black", label="Reference")
 
         ep_buffer = []
@@ -148,7 +159,8 @@ class Trainer:
             ep_reward, ep_tracking_error, ep_control_effort = 0, 0, 0
 
             # Env initialization
-            obs, infos = self.env.reset(seed=self.seed)
+            options = {"replace_x_0": True}
+            obs, infos = self.env.reset(seed=self.seed, options=options)
             trajectory = [infos["x"][:dimension]]
 
             done = False
@@ -179,6 +191,14 @@ class Trainer:
 
                     trajectory = np.array(trajectory)
                     coords = [trajectory[:, i] for i in range(dimension)]
+                    first_point = [c[0] for c in coords]
+                    ax.scatter(
+                        *first_point,
+                        marker="*",
+                        alpha=0.7,
+                        c=COLORS[str(num_episodes)],
+                        s=80.0,
+                    )
                     ax.plot(
                         *coords,
                         linestyle="-",
@@ -210,8 +230,8 @@ class Trainer:
             f"{self.policy.name}/eval/rew_std": rew_std,
             f"{self.policy.name}/eval/trk_error_mean": trk_mean,
             f"{self.policy.name}/eval/trk_error_std": trk_std,
-            f"{self.policy.name}/eval/ctr_error_mean": ctr_mean,
-            f"{self.policy.name}/eval/ctr_error_std": ctr_std,
+            f"{self.policy.name}/eval/ctr_effort_mean": ctr_mean,
+            f"{self.policy.name}/eval/ctr_effort_std": ctr_std,
         }
 
         return eval_dict, image_array

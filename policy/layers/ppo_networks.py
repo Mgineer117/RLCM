@@ -54,7 +54,7 @@ class PPO_Actor(nn.Module):
 
         else:
             ### Shape the output as desired
-            mu = F.tanh(logits)
+            mu = logits
             logstd = torch.zeros_like(mu)
             std = torch.exp(logstd)
 

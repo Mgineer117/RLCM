@@ -1,6 +1,7 @@
 import numpy as np
 import uuid
 import random
+import wandb
 import datetime
 
 from utils.get_args import get_args
@@ -37,6 +38,7 @@ def run(args, seed, unique_id, exp_time):
     )
 
     trainer.train()
+    wandb.finish()
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 import torch
+from copy import deepcopy
 
 
 from torch.utils.tensorboard import SummaryWriter
@@ -81,7 +82,9 @@ def setup_logger(args, unique_id, exp_time, seed):
     return logger, writer
 
 
-def override_args(args):
+def override_args(init_args):
+    # copy args
+    args = deepcopy(init_args)
     file_path = f"config/{args.task}/{args.algo_name}.json"
     current_params = load_hyperparams(file_path=file_path)
 
