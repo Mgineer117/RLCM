@@ -154,7 +154,7 @@ class PvtolEnv(gym.Env):
         )
         noise = np.random.normal(loc=0.0, scale=0.03, size=self.num_dim_x)
         self.x_t += noise
-        self.x_t = np.clip(self.x_t, X_MIN.flatten(), X_MAX.flatten())
+        self.x_t = np.clip(self.x_t, X_MIN.flatten() - lim, X_MAX.flatten() + lim)
         self.state = self.x_t - self.xref[self.time_steps]
 
         tracking_error = np.linalg.norm(self.state, ord=2)

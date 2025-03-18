@@ -9,8 +9,9 @@ v_h = 2.0
 X_MIN = np.array([-5.0, -5.0, -np.pi, v_l]).reshape(-1, 1)
 X_MAX = np.array([5.0, 5.0, np.pi, v_h]).reshape(-1, 1)
 
-XE_MIN = np.array([-1, -1, -1, -1]).reshape(-1, 1)
-XE_MAX = np.array([1, 1, 1, 1]).reshape(-1, 1)
+lim = 1.0
+XE_MIN = np.array([-lim, -lim, -lim, -lim]).reshape(-1, 1)
+XE_MAX = np.array([lim, lim, lim, lim]).reshape(-1, 1)
 
 UREF_MIN = np.array([-3.0, -3.0]).reshape(-1, 1)
 UREF_MAX = np.array([3.0, 3.0]).reshape(-1, 1)
@@ -114,7 +115,7 @@ class CarEnv(gym.Env):
         )
         noise = np.random.normal(loc=0.0, scale=0.03, size=self.num_dim_x)
         self.x_t += noise
-        self.x_t = np.clip(self.x_t, X_MIN.flatten(), X_MAX.flatten())
+        self.x_t = np.clip(self.x_t, X_MIN.flatten() - lim, X_MAX.flatten() + lim)
         self.state = self.x_t - self.xref[self.time_steps]
 
         tracking_error = np.linalg.norm(self.state, ord=2)
