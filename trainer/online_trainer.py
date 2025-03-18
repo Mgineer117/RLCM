@@ -155,7 +155,7 @@ class Trainer:
             done = False
             while not done:
                 with torch.no_grad():
-                    a, _ = self.policy(obs, deterministic=False)
+                    a, _ = self.policy(obs, deterministic=True)
                     a = a.cpu().numpy().squeeze()
                     if a.shape == ():  # Ensure it's an array
                         a = np.array([a.item()])

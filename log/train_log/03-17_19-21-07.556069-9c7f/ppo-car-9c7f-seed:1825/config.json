@@ -1,0 +1,39 @@
+{
+    "project": "Exp",
+    "logdir": "log/train_log/03-17_19-21-07.556069-9c7f",
+    "group": "03-17_19-21-07.556069-9c7f",
+    "name": "ppo-car-9c7f-seed:1825",
+    "task": "car",
+    "algo_name": "ppo",
+    "seed": 1825,
+    "num_runs": 10,
+    "actor_lr": 0.0003,
+    "critic_lr": 0.0005,
+    "actor_dim": [
+        64,
+        64
+    ],
+    "critic_dim": [
+        128,
+        128
+    ],
+    "timesteps": 3000000.0,
+    "log_intervals": 10,
+    "eval_episodes": 10,
+    "eval_num": 10,
+    "num_minibatch": 10,
+    "minibatch_size": 512,
+    "K_epochs": 3,
+    "eps": 0.2,
+    "target_kl": 0.02,
+    "gae": 0.95,
+    "entropy_scaler": 0.001,
+    "gamma": 0.99,
+    "load_pretrained_model": false,
+    "gpu_idx": 0,
+    "use_cuda": true,
+    "device": "cuda:0",
+    "state_dim": 4,
+    "action_dim": 2,
+    "episode_len": 200
+}
