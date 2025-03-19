@@ -114,7 +114,7 @@ class OnlineSampler(Base):
         if verbose:
             print("Sampling Parameters:")
             print(
-                f"Cores (usage)/(given)     : {self.num_workers_per_round}/{self.num_cores} out of {multiprocessing.cpu_count()}"
+                f"Cores (usage)/(given)   : {self.num_workers_per_round}/{self.num_cores} out of {multiprocessing.cpu_count()}"
             )
             print(f"Total number of Worker  : {self.total_num_worker}")
             print(f"Max. batch size         : {self.thread_batch_size}")

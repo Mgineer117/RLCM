@@ -14,7 +14,7 @@ from policy.base import Base
 # from models.layers.ppo_networks import PPO_Policy, PPO_Critic
 
 
-class PPO(Base):
+class C3M(Base):
     def __init__(
         self,
         actor: nn.Module,
@@ -32,10 +32,10 @@ class PPO(Base):
         K: int = 5,
         device: str = "cpu",
     ):
-        super(PPO, self).__init__()
+        super(C3M, self).__init__()
 
         # constants
-        self.name = "PPO"
+        self.name = "C3M"
         self.device = device
 
         self.num_minibatch = num_minibatch
@@ -244,3 +244,19 @@ class PPO(Base):
         avg_dict = {key: sum_val / count_dict[key] for key, sum_val in sum_dict.items()}
 
         return avg_dict
+
+    def save_model(self, logdir, epoch=None, is_best=False):
+        self.actor = self.actor.cpu()
+        self.critic = self.critic.cpu()
+
+        # save checkpoint
+        if is_best:
+            path = os.path.join(logdir, "best_model.p")
+        else:
+            path = os.path.join(logdir, "model_" + str(epoch) + ".p")
+        pickle.dump(
+            (self.actor, self.critic),
+            open(path, "wb"),
+        )
+        self.actor = self.actor.to(self.device)
+        self.critic = self.critic.to(self.device)

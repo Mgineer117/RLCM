@@ -33,23 +33,7 @@ class BaseLogger(ABC):
         self.base_logdir = log_dir
         self.log_dir = osp.join(self.base_logdir, name) if log_dir is not None else None
 
-        folder_names = [
-            "SF",
-            "OP",
-            "HC",
-            "OC",
-            "PPO",
-            "SAC",
-        ]  # successor feature, option policy, hierarchical controller
-
-        self.log_dirs = []
-        for folder_name in folder_names:
-            self.log_dirs.append(os.path.join(self.log_dir, folder_name))
-
-        self.checkpoint_dirs = []
-        for log_dir in self.log_dirs:
-            self.checkpoint_dirs.append(os.path.join(log_dir, "checkpoint"))
-
+        self.checkpoint_dir = os.path.join(self.log_dir, "checkpoint")
         self.log_fname = f"{name}.csv"
 
         if self.log_dir:
@@ -63,8 +47,7 @@ class BaseLogger(ABC):
                 print(warning_msg)
             else:
                 os.makedirs(self.log_dir)
-                for ckpt_dir in self.checkpoint_dirs:
-                    os.makedirs(ckpt_dir)
+                os.makedirs(self.checkpoint_dir)
 
             if log_txt:
                 self.csv_file = os.path.join(self.base_logdir, self.log_fname)

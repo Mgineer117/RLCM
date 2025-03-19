@@ -65,7 +65,7 @@ def read_weight(filename):
     return model
 
 
-Fa_model = read_weight("data/Fa_net_12_3_full_Lip16.pth")
+Fa_model = read_weight("model/Fa_net_12_3_full_Lip16.pth")
 
 
 def Fa_func(z, vx, vy, vz):
