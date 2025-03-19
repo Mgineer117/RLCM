@@ -34,7 +34,7 @@ UREF_MIN = np.array([m * g / 2 - 1, m * g / 2 - 1]).reshape(-1, 1)
 UREF_MAX = np.array([m * g / 2 + 1, m * g / 2 + 1]).reshape(-1, 1)
 
 # position: 1.0, orientation: 0.25, velocity: 0.15
-w = np.array([1.0, 1.0, 0.25, 0.15, 0.15, 0.15])  # relative importance
+w = np.array([1.0, 1.0, 0.15, 0.05, 0.05, 0.05])  # relative importance
 
 
 class PvtolEnv(gym.Env):
