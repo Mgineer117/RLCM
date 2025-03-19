@@ -27,11 +27,11 @@ X_INIT_MAX = np.array([1, 2.0, 0.1, 1.0, 0.0, 0.0])
 XE_INIT_MIN = np.array([-0.5, -0.5, -0.5, -0.5, -0.5, -0.5])
 XE_INIT_MAX = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
 
-STATE_MIN = np.concatenate((X_MIN.flatten(), X_MIN.flatten()))
-STATE_MAX = np.concatenate((X_MAX.flatten(), X_MAX.flatten()))
-
 UREF_MIN = np.array([m * g / 2 - 1, m * g / 2 - 1]).reshape(-1, 1)
 UREF_MAX = np.array([m * g / 2 + 1, m * g / 2 + 1]).reshape(-1, 1)
+
+STATE_MIN = np.concatenate((X_MIN.flatten(), UREF_MIN.flatten()))
+STATE_MAX = np.concatenate((X_MAX.flatten(), UREF_MAX.flatten()))
 
 # position: 1.0, orientation: 0.25, velocity: 0.15
 w = np.array([1.0, 1.0, 0.15, 0.05, 0.05, 0.05])  # relative importance
@@ -161,7 +161,9 @@ class PvtolEnv(gym.Env):
             self.x_t[: self.pos_dimension] >= X_MAX.flatten()[: self.pos_dimension]
         )
         self.x_t = np.clip(self.x_t, X_MIN.flatten(), X_MAX.flatten())
-        self.state = np.concatenate((self.x_t, self.xref[self.time_steps]))
+        self.state = np.concatenate(
+            (self.x_t - self.xref[self.time_steps], self.uref[self.time_steps])
+        )
 
         return termination
 
@@ -196,7 +198,9 @@ class PvtolEnv(gym.Env):
                 self.x_0 = x_0
 
         self.x_t = self.x_0.copy()
-        self.state = np.concatenate((self.x_t, self.xref[self.time_steps]))
+        self.state = np.concatenate(
+            (self.x_t - self.xref[self.time_steps], self.uref[self.time_steps])
+        )
 
         return self.state, {"x": self.x_t}
 

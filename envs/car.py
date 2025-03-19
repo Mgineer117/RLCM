@@ -19,12 +19,13 @@ X_INIT_MAX = np.array([2.0, 2.0, 1.0, 1.5])
 XE_INIT_MIN = np.full((4,), -1.0)
 XE_INIT_MAX = np.full((4,), 1.0)
 
-STATE_MIN = np.concatenate((X_MIN.flatten(), X_MIN.flatten()))
-STATE_MAX = np.concatenate((X_MAX.flatten(), X_MAX.flatten()))
-
 
 UREF_MIN = np.array([-3.0, -3.0]).reshape(-1, 1)
 UREF_MAX = np.array([3.0, 3.0]).reshape(-1, 1)
+
+
+STATE_MIN = np.concatenate((X_MIN.flatten(), UREF_MIN.flatten()))
+STATE_MAX = np.concatenate((X_MAX.flatten(), UREF_MAX.flatten()))
 
 # position: 1.0, orientation: 0.5, velocity: 0.25
 w = np.array([1.0, 1.0, 0.25, 0.25])  # relative importance
@@ -139,7 +140,9 @@ class CarEnv(gym.Env):
         )
         self.x_t = np.clip(self.x_t, X_MIN.flatten(), X_MAX.flatten())
 
-        self.state = np.concatenate((self.x_t, self.xref[self.time_steps]))
+        self.state = np.concatenate(
+            (self.x_t - self.xref[self.time_steps], self.uref[self.time_steps])
+        )
 
         return termination
 
@@ -174,7 +177,9 @@ class CarEnv(gym.Env):
                 self.x_0 = x_0
 
         self.x_t = self.x_0.copy()
-        self.state = np.concatenate((self.x_t, self.xref[self.time_steps]))
+        self.state = np.concatenate(
+            (self.x_t - self.xref[self.time_steps], self.uref[self.time_steps])
+        )
         return self.state, {"x": self.x_t}
 
     def step(self, action):
