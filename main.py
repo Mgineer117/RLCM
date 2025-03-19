@@ -6,12 +6,20 @@ import datetime
 
 from utils.get_args import get_args
 from utils.rl import call_env, get_policy
-from utils.misc import setup_logger, override_args, concat_csv_columnwise_and_delete
+from utils.misc import (
+    seed_all,
+    setup_logger,
+    override_args,
+    concat_csv_columnwise_and_delete,
+)
 from utils.sampler import OnlineSampler
 from trainer.online_trainer import Trainer
 
 
 def run(args, seed, unique_id, exp_time):
+    # fix seed
+    seed_all(seed)
+
     # get env
     env = call_env(args)
 

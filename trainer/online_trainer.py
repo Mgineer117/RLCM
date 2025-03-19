@@ -156,7 +156,17 @@ class Trainer:
 
         ep_buffer = []
         for num_episodes in range(self.eval_episodes):
-            ep_reward, ep_tracking_error, ep_control_effort = 0, 0, 0
+            (
+                ep_reward,
+                ep_relative_tracking_error,
+                ep_tracking_error,
+                ep_control_effort,
+            ) = (
+                0,
+                0,
+                0,
+                0,
+            )
 
             # Env initialization
             options = {"replace_x_0": True}
@@ -177,6 +187,7 @@ class Trainer:
 
                 obs = next_obs
                 ep_reward += rew
+                ep_relative_tracking_error += infos["relative_tracking_error"]
                 ep_tracking_error += infos["tracking_error"]
                 ep_control_effort += infos["control_effort"]
 
@@ -184,6 +195,7 @@ class Trainer:
                     ep_buffer.append(
                         {
                             "reward": ep_reward,
+                            "relative_tracking_error": ep_relative_tracking_error,
                             "tracking_error": ep_tracking_error,
                             "control_effort": ep_control_effort,
                         }
@@ -218,16 +230,20 @@ class Trainer:
         plt.close(fig)
 
         rew_list = [ep_info["reward"] for ep_info in ep_buffer]
+        rel_list = [ep_info["relative_tracking_error"] for ep_info in ep_buffer]
         trk_list = [ep_info["tracking_error"] for ep_info in ep_buffer]
         ctr_list = [ep_info["control_effort"] for ep_info in ep_buffer]
 
         rew_mean, rew_std = np.mean(rew_list), np.std(rew_list)
+        rel_mean, rel_std = np.mean(rel_list), np.std(rel_list)
         trk_mean, trk_std = np.mean(trk_list), np.std(trk_list)
         ctr_mean, ctr_std = np.mean(ctr_list), np.std(ctr_list)
 
         eval_dict = {
             f"{self.policy.name}/eval/rew_mean": rew_mean,
             f"{self.policy.name}/eval/rew_std": rew_std,
+            f"{self.policy.name}/eval/rel_trk_error_mean": rel_mean,
+            f"{self.policy.name}/eval/rel_trk_error_std": rel_std,
             f"{self.policy.name}/eval/trk_error_mean": trk_mean,
             f"{self.policy.name}/eval/trk_error_std": trk_std,
             f"{self.policy.name}/eval/ctr_effort_mean": ctr_mean,
