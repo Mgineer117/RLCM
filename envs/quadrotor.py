@@ -2,51 +2,68 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-# PVTOL PARAMETERS
-p_lim = np.pi / 3
-pd_lim = np.pi / 3
-vx_lim = 2.0
-vz_lim = 1.0
-
-X_MIN = np.array([-3.0, 0.0, -p_lim, -vx_lim, -vz_lim, -pd_lim]).reshape(-1, 1)
-X_MAX = np.array([3.0, 6.0, p_lim, vx_lim, vz_lim, pd_lim]).reshape(-1, 1)
-
-m = 0.486
-J = 0.00383
+# QUADROTOR PARAMETERS
 g = 9.81
-l = 0.25
+
+x10_lim = np.pi / 3
+x9_lim = np.pi / 3
+x8_lim = np.pi / 3
+x7_low = 0.5 * g
+x7_high = 2 * g
+x4_lim = 1.5
+x5_lim = 1.5
+x6_lim = 1.5
+
+X_MIN = np.array(
+    [-30.0, -30.0, -30.0, -x4_lim, -x5_lim, -x6_lim, x7_low, -x8_lim, -x9_lim, -x10_lim]
+).reshape(-1, 1)
+X_MAX = np.array(
+    [30.0, 30.0, 30.0, x4_lim, x5_lim, x6_lim, x7_high, x8_lim, x9_lim, x10_lim]
+).reshape(-1, 1)
+
+# we noticed that the last item of u is dead and useless
+UREF_MIN = np.array([-1.0, -1.0, -1.0, -1.0]).reshape(-1, 1)
+UREF_MAX = np.array([1.0, 1.0, 1.0, 1.0]).reshape(-1, 1)
 
 lim = 1.0
-XE_MIN = np.array([-lim, -lim, -lim, -lim, -lim, -lim]).reshape(-1, 1)
-XE_MAX = np.array([lim, lim, lim, lim, lim, lim]).reshape(-1, 1)
+XE_MIN = np.array([-lim, -lim, -lim, -lim, -lim, -lim, -lim, -lim, -lim, -lim]).reshape(
+    -1, 1
+)
+XE_MAX = np.array([lim, lim, lim, lim, lim, lim, lim, lim, lim, lim]).reshape(-1, 1)
 
 # for sampling ref
-X_INIT_MIN = np.array([-1, 1.0, -0.1, 0.5, 0.0, 0.0])
-X_INIT_MAX = np.array([1, 2.0, 0.1, 1.0, 0.0, 0.0])
+X_INIT_MIN = np.array([-5, -5, -5, -1.0, -1.0, -1.0, g, 0, 0, 0])
+X_INIT_MAX = np.array([5, 5, 5, 1.0, 1.0, 1.0, g, 0, 0, 0])
 
-XE_INIT_MIN = np.array([-0.5, -0.5, -0.5, -0.5, -0.5, -0.5])
-XE_INIT_MAX = np.array([0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+XE_INIT_MIN = np.array(
+    [
+        -0.5,
+    ]
+    * 10
+)
+XE_INIT_MAX = np.array(
+    [
+        0.5,
+    ]
+    * 10
+)
 
-UREF_MIN = np.array([m * g / 2 - 1, m * g / 2 - 1]).reshape(-1, 1)
-UREF_MAX = np.array([m * g / 2 + 1, m * g / 2 + 1]).reshape(-1, 1)
-
-
-state_weights = np.array([1, 1, 0.1, 0.1, 0.1, 0.1])
+state_weights = np.array([1, 1, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
 STATE_MIN = np.concatenate((X_MIN.flatten(), X_MIN.flatten(), UREF_MIN.flatten()))
 STATE_MAX = np.concatenate((X_MAX.flatten(), X_MAX.flatten(), UREF_MAX.flatten()))
 
 
-class PvtolEnv(gym.Env):
+class QuadRotorEnv(gym.Env):
     def __init__(self, sigma: float = 0.0):
-        super(PvtolEnv, self).__init__()
+        super(QuadRotorEnv, self).__init__()
         """
         State: tracking error between current and reference trajectory
         Reward: 1 / (The 2-norm of tracking error + 1)
         """
-        self.num_dim_x = 6
-        self.num_dim_control = 2
-        self.pos_dimension = 2
+        self.num_dim_x = 10
+        self.num_dim_control = 4
+        self.pos_dimension = 3
 
         self.tracking_scaler = 1.0
         self.control_scaler = 1e-1
@@ -70,23 +87,30 @@ class PvtolEnv(gym.Env):
     def f_func(self, x):
         # x: bs x n x 1
         # f: bs x n x 1
-        p_x, p_z, phi, v_x, v_z, dot_phi = [x[i] for i in range(self.num_dim_x)]
+        x, y, z, vx, vy, vz, force, theta_x, theta_y, theta_z = [
+            x[i] for i in range(self.num_dim_x)
+        ]
         f = np.zeros((self.num_dim_x,))
-        f[0] = v_x * np.cos(phi) - v_z * np.sin(phi)
-        f[1] = v_x * np.sin(phi) + v_z * np.cos(phi)
-        f[2] = dot_phi
-        f[3] = v_z * dot_phi - g * np.sin(phi)
-        f[4] = -v_x * dot_phi - g * np.cos(phi)
-        f[5] = 0
+        f[0] = vx
+        f[1] = vy
+        f[2] = vz
+        f[3] = -force * np.sin(theta_y)
+        f[4] = force * np.cos(theta_y) * np.sin(theta_x)
+        f[5] = g - force * np.cos(theta_y) * np.cos(theta_x)
+        f[6] = 0
+        f[7] = 0
+        f[8] = 0
+        f[9] = 0
+
         return f
 
     def b_func(self, x):
         B = np.zeros((self.num_dim_x, self.num_dim_control))
 
-        B[4, 0] = 1 / m
-        B[4, 1] = 1 / m
-        B[5, 0] = l / J
-        B[5, 1] = -l / J
+        B[6, 0] = 1
+        B[7, 1] = 1
+        B[8, 2] = 1
+        B[9, 2] = 1
         return B
 
     def system_reset(self):
@@ -102,16 +126,18 @@ class PvtolEnv(gym.Env):
         freqs = list(range(1, 11))
         weights = np.random.randn(len(freqs), len(UREF_MIN))
         weights = (
-            0.1 * weights / np.sqrt((weights**2).sum(axis=0, keepdims=True))
+            2.0 * weights / np.sqrt((weights**2).sum(axis=0, keepdims=True))
         ).tolist()
 
         xref = [xref_0]
         uref = []
         for i, _t in enumerate(self.t):
-            u = 0.5 * np.array([m * g, m * g])  # ref
+            u = np.array([0.0, 0.0, 0.0, 0.0])  # ref
             for freq, weight in zip(freqs, weights):
                 u += np.array(
                     [
+                        weight[0] * np.sin(freq * _t / self.time_bound * 2 * np.pi),
+                        weight[0] * np.sin(freq * _t / self.time_bound * 2 * np.pi),
                         weight[0] * np.sin(freq * _t / self.time_bound * 2 * np.pi),
                         weight[0] * np.sin(freq * _t / self.time_bound * 2 * np.pi),
                     ]

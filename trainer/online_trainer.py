@@ -218,6 +218,14 @@ class Trainer:
                         c=COLORS[str(num_episodes)],
                         label=str(num_episodes),
                     )
+        # Optional: Add axis labels
+        ax.set_xlabel("X", labelpad=10)
+        ax.set_ylabel("Y", labelpad=10)
+        if dimension == 3:
+            ax.set_zlabel("Z", labelpad=10)
+            # Set a nice viewing angle for 3D
+            ax.view_init(elev=25, azim=45)
+        plt.tight_layout()
 
         # Convert figure to a NumPy array
         # Render the figure to update the canvas

@@ -1,5 +1,5 @@
 {
-    "timesteps": 1e6,
+    "timesteps": 3e6,
     "log_interval": 50,
     "actor_lr": 2.5e-4,
     "critic_lr": 1e-3,
@@ -10,8 +10,8 @@
         64
     ],
     "critic_dim": [
-        128,
-        128
+        256,
+        256
     ],
     "num_minibatch": 32,
     "minibatch_size": 4096,

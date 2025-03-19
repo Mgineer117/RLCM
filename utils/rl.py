@@ -2,6 +2,8 @@ import torch
 
 from envs.car import CarEnv
 from envs.pvtol import PvtolEnv
+from envs.quadrotor import QuadRotorEnv
+from envs.neurallander import NeuralLanderEnv
 
 
 def estimate_advantages(
@@ -35,9 +37,13 @@ def call_env(args):
     task = args.task
 
     if task == "car":
-        env = CarEnv()
+        env = CarEnv(sigma=args.sigma)
     elif task == "pvtol":
-        env = PvtolEnv()
+        env = PvtolEnv(sigma=args.sigma)
+    elif task == "quadrotor":
+        env = QuadRotorEnv(sigma=args.sigma)
+    elif task == "neurallander":
+        env = NeuralLanderEnv(sigma=args.sigma)
     else:
         raise NotImplementedError(f"{task} is not implemented.")
 

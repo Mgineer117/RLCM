@@ -54,7 +54,9 @@ def get_args():
     parser.add_argument(
         "--eval-num", type=int, default=10, help="Number of training epochs."
     )
-
+    parser.add_argument(
+        "--sigma", type=float, default=None, help="Number of training epochs."
+    )
     parser.add_argument("--num-minibatch", type=int, default=None, help="")
     parser.add_argument("--minibatch-size", type=int, default=None, help="")
     parser.add_argument("--K-epochs", type=int, default=None, help="")

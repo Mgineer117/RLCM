@@ -23,12 +23,10 @@ XE_INIT_MAX = np.full((4,), 1.0)
 UREF_MIN = np.array([-3.0, -3.0]).reshape(-1, 1)
 UREF_MAX = np.array([3.0, 3.0]).reshape(-1, 1)
 
+state_weights = np.array([1, 1, 0.1, 0.1])
 
 STATE_MIN = np.concatenate((X_MIN.flatten(), X_MIN.flatten(), UREF_MIN.flatten()))
 STATE_MAX = np.concatenate((X_MAX.flatten(), X_MAX.flatten(), UREF_MAX.flatten()))
-
-# position: 1.0, orientation: 0.5, velocity: 0.25
-w = np.array([1.0, 1.0, 0.5, 0.5])  # relative importance
 
 
 class CarEnv(gym.Env):
@@ -50,6 +48,7 @@ class CarEnv(gym.Env):
         self.episode_len = int(self.time_bound / self.dt)
         self.t = np.arange(0, self.time_bound, self.dt)
 
+        self.state_weights = state_weights
         self.sigma = sigma
         self.d_up = 3 * sigma
 
@@ -94,7 +93,7 @@ class CarEnv(gym.Env):
                 u += np.array(
                     [weight[0] * np.sin(freq * _t / self.time_bound * 2 * np.pi), 0]
                 )
-            u = np.clip(u, UREF_MIN.flatten(), UREF_MAX.flatten())
+            u = np.clip(u, 0.75 * UREF_MIN.flatten(), 0.75 * UREF_MAX.flatten())
 
             x_t = xref[-1].copy()
 
@@ -149,8 +148,10 @@ class CarEnv(gym.Env):
         return termination
 
     def reward_fn(self, action):
+        error = self.x_t - self.xref[self.time_steps]
+
         tracking_error = np.linalg.norm(
-            w * (self.x_t - self.xref[self.time_steps]),
+            self.state_weights * error,
             ord=2,
         )
         control_effort = np.linalg.norm(action, ord=2)
