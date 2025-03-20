@@ -2,6 +2,7 @@ import os
 import pickle
 import numpy as np
 import torch.nn as nn
+import h5py
 
 from envs.car import CarEnv
 from envs.pvtol import PvtolEnv
@@ -31,9 +32,9 @@ def load_npz(filename="data.npz"):
     data = {key: loaded[key] for key in loaded}
     avg_rewards = np.sum(data["rewards"]) / np.sum(data["terminals"])
 
-    print(f"data keys: {data.keys()}")
-    print(f"data length: {len(data['rewards'])}")
-    print(f"data performance: {avg_rewards:2f}")
+    print(f"Data keys: {data.keys()}")
+    print(f"Data Quality (avg trj rewards): {avg_rewards:2f}")
+    print(f"Sample Num.: {len(data['rewards'])}")
 
     return data
 
@@ -139,7 +140,7 @@ def data_loop(env, policy: nn.Module, size: int):
         current_size += len(truncated_batch["rewards"])
         count += 1
 
-    print(f"Terminating data loop with size: {current_size} and loop: {count}")
+    # print(f"Terminating data loop with size: {current_size} and loop: {count}")
     data = concat_batches(batches)
     return data
 
@@ -165,8 +166,8 @@ def generate_dataset(task: str, quality: str, sigma: float, size: int):
     else:
         if quality == "medium-replay":
             policies = [get_random_policy(state_dim=state_dim, action_dim=action_dim)]
-            for quality in [0.1, 0.2, 0.3, 0.4, 0.5]:
-                policies.append(get_policy(task, quality, sigma))
+            for q in [0.1, 0.2, 0.3, 0.4, 0.5]:
+                policies.append(get_policy(task, q, sigma))
 
             num_policies = len(policies)
             minibatch = size // num_policies
@@ -177,7 +178,7 @@ def generate_dataset(task: str, quality: str, sigma: float, size: int):
                 data_list.append(data)
 
         elif quality == "medium-expert":
-            policies = [get_policy(task, quality, sigma) for quality in [0.5, 1.0]]
+            policies = [get_policy(task, q, sigma) for q in [0.5, 1.0]]
             num_policies = len(policies)
             minibatch = size // num_policies
 
@@ -197,7 +198,7 @@ def generate_dataset(task: str, quality: str, sigma: float, size: int):
         data[k] = arr[:size]
 
     data_name = f"{task}_{quality}_{sigma}.npz"
-    save_npz(data, filename=f"{data_name}")
+    save_npz(data, filename=data_name)
     load_npz(data_name)
 
 
@@ -208,10 +209,12 @@ if __name__ == "__main__":
     ################
     # data params
     ################
-    # quality_list = ["random", "medium", "medium-replay", "medium-expert", "expert"]
+    quality_list = ["random", "medium-replay", "medium", "medium-expert", "expert"]
     task = "car"
-    quality = "medium-replay"
+    # quality = "medium-replay"
     sigma = 0.0
     size = 100_000
-
-    generate_dataset(task, quality, sigma, size)
+    for quality in quality_list:
+        print("==================================")
+        print(f"Beginning {task} {quality} {sigma} dataset")
+        generate_dataset(task, quality, sigma, size)

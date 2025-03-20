@@ -1,6 +1,10 @@
+import os
 import numpy as np
+import urllib.request
 import gymnasium as gym
 from gymnasium import spaces
+from infos import DATASET_URLS
+
 
 # CAR PARAMETERS
 v_l = 1.0
@@ -36,6 +40,8 @@ class CarEnv(gym.Env):
         State: tracking error between current and reference trajectory
         Reward: The 2-norm of tracking error
         """
+        self.task = "car"
+
         self.num_dim_x = 4  # x, y, theta, v
         self.num_dim_control = 2  # u1 (angular acc), u2 (linear acc)
         self.pos_dimension = 2
@@ -220,3 +226,35 @@ class CarEnv(gym.Env):
 
     def render(self, mode="human"):
         pass
+
+    def get_dataset(self, quality: str):
+        # Construct a unique dataset name (e.g., "cartpole-random-0.1")
+        data_name = "-".join([self.task, quality, str(self.sigma)])
+
+        # Lookup the direct download link
+        link_to_data = DATASET_URLS[data_name]
+
+        # Create a hidden local directory if it doesn't exist
+        home_dir = os.path.expanduser("~")
+        hidden_dir = os.path.join(home_dir, ".local", "rl-ccm")
+        os.makedirs(hidden_dir, exist_ok=True)
+        os.makedirs(hidden_dir, exist_ok=True)
+
+        # Full path for the local .npz file
+        local_file = os.path.join(hidden_dir, f"{data_name}.npz")
+
+        # Check if file already exists
+        if not os.path.isfile(local_file):
+            # Download the file from the direct link
+            urllib.request.urlretrieve(link_to_data, local_file)
+            print(f"Downloaded dataset to {local_file}.")
+        else:
+            print(f"Dataset already exists at {local_file}.")
+
+        # Load the .npz file
+        loaded = np.load(local_file, allow_pickle=True)
+        data = {key: loaded[key] for key in loaded}
+
+        print(f"Data keys: {data.keys()}")
+        print(f"Sample Num.: {len(data['rewards'])}")
+        return data

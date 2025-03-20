@@ -18,11 +18,12 @@ from trainer.online_trainer import Trainer
 
 def run(args, seed, unique_id, exp_time):
     # fix seed
-    seed = 1_234_567
+    # seed = 1_234_567
     seed_all(seed)
 
     # get env
     env = call_env(args)
+    dataset = env.get_dataset(args.quality)
 
     policy = get_policy(args)
     sampler = OnlineSampler(

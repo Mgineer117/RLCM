@@ -22,7 +22,10 @@ def get_args():
         default=None,
         help='Seed-specific folder name in the "group" folder.',
     )
-    parser.add_argument("--task", type=str, default="pvtol", help="Name of the model.")
+    parser.add_argument("--task", type=str, default="car", help="Name of the model.")
+    parser.add_argument(
+        "--quality", type=str, default="expert", help="Name of the model."
+    )
     parser.add_argument("--algo-name", type=str, default="ppo", help="Disable cuda.")
     parser.set_defaults(use_cuda=True)
     parser.add_argument("--seed", type=int, default=42, help="Batch size.")
