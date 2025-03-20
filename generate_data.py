@@ -210,7 +210,7 @@ if __name__ == "__main__":
     # data params
     ################
     quality_list = ["random", "medium-replay", "medium", "medium-expert", "expert"]
-    task = "car"
+    task = "pvtol"
     # quality = "medium-replay"
     sigma = 0.0
     size = 100_000
