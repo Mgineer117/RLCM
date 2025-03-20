@@ -26,6 +26,7 @@ def run(args, seed, unique_id, exp_time):
     # dataset = env.get_dataset(args.quality)
 
     policy = get_policy(args)
+
     sampler = OnlineSampler(
         state_dim=args.state_dim,
         action_dim=args.action_dim,
@@ -34,7 +35,6 @@ def run(args, seed, unique_id, exp_time):
     )
     logger, writer = setup_logger(args, unique_id, exp_time, seed)
 
-    # get policy
     trainer = Trainer(
         env=env,
         policy=policy,
@@ -47,7 +47,7 @@ def run(args, seed, unique_id, exp_time):
         seed=args.seed,
     )
 
-    trainer.train()
+    trainer.train(scheduler="lambda")
     wandb.finish()
 
 

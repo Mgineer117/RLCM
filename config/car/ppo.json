@@ -2,7 +2,7 @@
     "timesteps": 1e6,
     "log_interval": 100,
     "actor_lr": 2.5e-4,
-    "critic_lr": 1e-3,
+    "critic_lr": 5e-4,
     "K_epochs": 15,
     "target_kl": 0.03,
     "actor_dim": [
@@ -13,8 +13,8 @@
         128,
         128
     ],
-    "num_minibatch": 32,
-    "minibatch_size": 4096,
+    "num_minibatch": 4,
+    "minibatch_size": 64,
     "entropy_scaler": 1e-2,
     "eval_episodes": 10,
     "sigma": 0.0,

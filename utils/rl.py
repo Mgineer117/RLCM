@@ -75,6 +75,7 @@ def get_policy(args):
             actor_lr=args.actor_lr,
             critic_lr=args.critic_lr,
             num_minibatch=args.num_minibatch,
+            minibatch_size=args.minibatch_size,
             eps=args.eps,
             entropy_scaler=args.entropy_scaler,
             target_kl=args.target_kl,

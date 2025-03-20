@@ -201,9 +201,7 @@ class PPO(Base):
             "PPO/analytics/clip_fraction": np.mean(clip_fractions),
             "PPO/analytics/klDivergence": target_kl[-1],
             "PPO/analytics/K-epoch": k + 1,
-            "PPO/analytics/avg_rewards": (
-                torch.sum(rewards) / torch.sum(terminals)
-            ).item(),
+            "PPO/analytics/avg_rewards": torch.mean(rewards).item(),
         }
         grad_dict = self.average_dict_values(grad_dicts)
         norm_dict = self.compute_weight_norm(

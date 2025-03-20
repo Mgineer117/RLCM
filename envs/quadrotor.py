@@ -8,7 +8,6 @@ from infos import DATASET_URLS
 # QUADROTOR PARAMETERS
 g = 9.81
 
-x10_lim = np.pi / 3
 x9_lim = np.pi / 3
 x8_lim = np.pi / 3
 x7_low = 0.5 * g
@@ -18,10 +17,10 @@ x5_lim = 1.5
 x6_lim = 1.5
 
 X_MIN = np.array(
-    [-30.0, -30.0, -30.0, -x4_lim, -x5_lim, -x6_lim, x7_low, -x8_lim, -x9_lim, -x10_lim]
+    [-30.0, -30.0, -30.0, -x4_lim, -x5_lim, -x6_lim, x7_low, -x8_lim, -x9_lim]
 ).reshape(-1, 1)
 X_MAX = np.array(
-    [30.0, 30.0, 30.0, x4_lim, x5_lim, x6_lim, x7_high, x8_lim, x9_lim, x10_lim]
+    [30.0, 30.0, 30.0, x4_lim, x5_lim, x6_lim, x7_high, x8_lim, x9_lim]
 ).reshape(-1, 1)
 
 # we noticed that the last item of u is dead and useless
@@ -35,20 +34,20 @@ XE_MIN = np.array([-lim, -lim, -lim, -lim, -lim, -lim, -lim, -lim, -lim, -lim]).
 XE_MAX = np.array([lim, lim, lim, lim, lim, lim, lim, lim, lim, lim]).reshape(-1, 1)
 
 # for sampling ref
-X_INIT_MIN = np.array([-5, -5, -5, -1.0, -1.0, -1.0, g, 0, 0, 0])
-X_INIT_MAX = np.array([5, 5, 5, 1.0, 1.0, 1.0, g, 0, 0, 0])
+X_INIT_MIN = np.array([-5, -5, -5, -1.0, -1.0, -1.0, g, 0, 0])
+X_INIT_MAX = np.array([5, 5, 5, 1.0, 1.0, 1.0, g, 0, 0])
 
 XE_INIT_MIN = np.array(
     [
         -0.5,
     ]
-    * 10
+    * 9
 )
 XE_INIT_MAX = np.array(
     [
         0.5,
     ]
-    * 10
+    * 9
 )
 
 # x, y, z, vx, vy, vz, force, theta_x, theta_y, theta_z
@@ -56,7 +55,7 @@ XE_INIT_MAX = np.array(
 # state_weights = np.array([1, 1, 1, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1])
 # state_weights = np.array([1, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1])
 # state_weights = np.array([1, 1, 1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0])
-state_weights = np.array([1, 1, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+state_weights = np.array([1, 1, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
 STATE_MIN = np.concatenate((X_MIN.flatten(), X_MIN.flatten(), UREF_MIN.flatten()))
 STATE_MAX = np.concatenate((X_MAX.flatten(), X_MAX.flatten(), UREF_MAX.flatten()))
@@ -69,7 +68,7 @@ class QuadRotorEnv(gym.Env):
         State: tracking error between current and reference trajectory
         Reward: 1 / (The 2-norm of tracking error + 1)
         """
-        self.num_dim_x = 10
+        self.num_dim_x = 9
         self.num_dim_control = 4
         self.pos_dimension = 3
 
@@ -95,7 +94,7 @@ class QuadRotorEnv(gym.Env):
     def f_func(self, x):
         # x: bs x n x 1
         # f: bs x n x 1
-        x, y, z, vx, vy, vz, force, theta_x, theta_y, theta_z = [
+        x, y, z, vx, vy, vz, force, theta_x, theta_y = [
             x[i] for i in range(self.num_dim_x)
         ]
         f = np.zeros((self.num_dim_x,))
@@ -108,7 +107,6 @@ class QuadRotorEnv(gym.Env):
         f[6] = 0
         f[7] = 0
         f[8] = 0
-        f[9] = 0
 
         return f
 
@@ -118,7 +116,6 @@ class QuadRotorEnv(gym.Env):
         B[6, 0] = 1
         B[7, 1] = 1
         B[8, 2] = 1
-        B[9, 2] = 1
         return B
 
     def system_reset(self):
@@ -215,6 +212,8 @@ class QuadRotorEnv(gym.Env):
         reward = self.tracking_scaler / (tracking_error + 1) + self.control_scaler / (
             control_effort + 1
         )
+
+        # reward = (self.time_steps / self.episode_len) * reward
 
         return reward, {
             "tracking_error": tracking_error,

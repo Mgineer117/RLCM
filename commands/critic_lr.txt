@@ -1,0 +1,4 @@
+nohup python3 main.py --task quadrotor --num-runs 1 --critic-lr 3e-4 &
+nohup python3 main.py --task quadrotor --num-runs 1 --critic-lr 7e-4 &
+nohup python3 main.py --task quadrotor --num-runs 1 --critic-lr 1e-3 &
+nohup python3 main.py --task quadrotor --num-runs 1 --critic-lr 3e-3 &

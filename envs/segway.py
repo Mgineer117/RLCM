@@ -30,7 +30,7 @@ X_INIT_MAX = np.array([0.0, 0, 0.0, 0])
 XE_INIT_MIN = np.array([-1.0, -np.pi / 3, -0.5, -np.pi])
 XE_INIT_MAX = np.array([1.0, np.pi / 3, 0.5, np.pi])
 
-state_weights = np.array([1, 1, 0.1, 0.1])
+state_weights = np.array([1, 1, 0.1, 0.1])  # 1
 
 STATE_MIN = np.concatenate((X_MIN.flatten(), X_MIN.flatten(), UREF_MIN.flatten()))
 STATE_MAX = np.concatenate((X_MAX.flatten(), X_MAX.flatten(), UREF_MAX.flatten()))

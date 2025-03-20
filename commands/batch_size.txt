@@ -1,0 +1,5 @@
+nohup python3 main.py --task quadrotor --num-runs 1 --minibatch-size 64 &
+nohup python3 main.py --task quadrotor --num-runs 1 --minibatch-size 256 &
+nohup python3 main.py --task quadrotor --num-runs 1 --minibatch-size 512 &
+nohup python3 main.py --task quadrotor --num-runs 1 --minibatch-size 1024 --timesteps 3000000 &
+nohup python3 main.py --task quadrotor --num-runs 1 --minibatch-size 2048 --timesteps 3000000 &

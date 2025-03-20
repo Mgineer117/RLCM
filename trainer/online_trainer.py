@@ -6,8 +6,9 @@ import torch
 import gymnasium as gym
 
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import LambdaLR
+
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 from tqdm import tqdm
 from collections import deque
@@ -16,6 +17,7 @@ from log.wandb_logger import WandbLogger
 from policy.base import Base
 
 from utils.sampler import OnlineSampler
+
 
 COLORS = {
     "0": "magenta",
@@ -41,7 +43,6 @@ class Trainer:
         logger: WandbLogger,
         writer: SummaryWriter,
         timesteps: int = 1e6,
-        lr_scheduler: torch.optim.lr_scheduler = None,
         log_interval: int = 2,
         eval_episodes: int = 10,
         seed: int = 0,
@@ -56,26 +57,40 @@ class Trainer:
 
         # training parameters
         self.timesteps = timesteps
-        self.eval_num = 0
-        self.eval_interval = int(self.timesteps / log_interval)
-        self.lr_scheduler = lr_scheduler
+        self.nupdates = self.timesteps // self.policy.minibatch_size
+
+        self.log_interval = log_interval
+        self.eval_interval = int(self.timesteps / self.log_interval)
 
         # initialize the essential training components
         self.last_max_reward = -1e10
         self.std_limit = 0.5
 
-        self.log_interval = log_interval
         self.seed = seed
 
-    def train(self) -> dict[str, float]:
+    def train(self, scheduler: str | None = None) -> dict[str, float]:
         start_time = time.time()
 
         self.last_reward_mean = deque(maxlen=3)
         self.last_reward_std = deque(maxlen=3)
 
+        ### DEFINE LR SCHEDULER ####
+        if scheduler == "lambda":
+
+            def lr_lambda(step):
+                # linearly decay from 1.0 at step=0 to 0.0 at step=max_steps
+                return 1.0 - float(step) / float(self.timesteps)
+
+            lr_scheduler = LambdaLR(self.policy.optimizer, lr_lambda=lr_lambda)
+        else:
+            lr_scheduler = None
+
         # Train loop
+        eval_idx = 0
         with tqdm(total=self.timesteps, desc=f"PPO Training (Timesteps)") as pbar:
             while pbar.n < self.timesteps:
+                step = pbar.n + 1  # + 1 to avoid zero division
+
                 self.policy.train()
                 batch, sample_time = self.sampler.collect_samples(
                     env=self.env, policy=self.policy, seed=self.seed
@@ -86,34 +101,37 @@ class Trainer:
                 pbar.update(ppo_timesteps)
 
                 elapsed_time = time.time() - start_time
-                avg_time_per_iter = elapsed_time / pbar.n
-                remaining_time = avg_time_per_iter * (self.timesteps - pbar.n)
+                avg_time_per_iter = elapsed_time / step
+                remaining_time = avg_time_per_iter * (self.timesteps - step)
 
                 # Update environment steps and calculate time metrics
-                loss_dict[f"{self.policy.name}/analytics/timesteps"] = pbar.n
+                loss_dict[f"{self.policy.name}/analytics/timesteps"] = step
                 loss_dict[f"{self.policy.name}/analytics/sample_time"] = sample_time
                 loss_dict[f"{self.policy.name}/analytics/update_time"] = update_time
+                loss_dict[f"{self.policy.name}/analytics/learning_rate"] = (
+                    self.policy.optimizer.param_groups[0]["lr"]
+                )
                 loss_dict[f"{self.policy.name}/analytics/remaining_time (hr)"] = (
                     remaining_time / 3600
                 )  # Convert to hours
 
-                self.write_log(loss_dict, step=pbar.n)
+                self.write_log(loss_dict, step=step)
 
-                if self.lr_scheduler is not None:
-                    self.lr_scheduler.step()
+                #### LR-SCHEDULING ####
+                if lr_scheduler is not None:
+                    lr_scheduler.step(step)
 
-                if pbar.n >= self.eval_interval * (self.eval_num + 1):
+                #### EVALUATIONS ####
+                if step >= self.eval_interval * (eval_idx + 1):
                     ### Eval Loop
                     self.policy.eval()
-                    self.eval_num += 1
+                    eval_idx += 1
 
                     eval_dict, traj_plot = self.evaluate()
 
                     # Manual logging
-                    self.write_log(eval_dict, step=pbar.n, eval_log=True)
-                    self.write_image(
-                        traj_plot, step=pbar.n, logdir=f"{self.policy.name}"
-                    )
+                    self.write_log(eval_dict, step=step, eval_log=True)
+                    self.write_image(traj_plot, step=step, logdir=f"{self.policy.name}")
 
                     self.last_reward_mean.append(
                         eval_dict[f"{self.policy.name}/eval/rew_mean"]
@@ -122,7 +140,7 @@ class Trainer:
                         eval_dict[f"{self.policy.name}/eval/rew_std"]
                     )
 
-                    self.save_model(pbar.n)
+                    self.save_model(step)
 
             torch.cuda.empty_cache()
 
@@ -155,27 +173,21 @@ class Trainer:
         )
         ax.plot(*coords, linestyle="--", c="black", label="Reference")
 
+        error_trajs = []
+        tref_trajs = []
         ep_buffer = []
         for num_episodes in range(self.eval_episodes):
-            (
-                ep_reward,
-                ep_relative_tracking_error,
-                ep_tracking_error,
-                ep_control_effort,
-            ) = (
-                0,
-                0,
-                0,
-                0,
-            )
+            ep_reward, ep_tracking_error, ep_control_effort = 0, 0, 0
+            auc_list = []
 
             # Env initialization
             options = {"replace_x_0": True}
             obs, infos = self.env.reset(seed=self.seed, options=options)
             trajectory = [infos["x"][:dimension]]
+            error_trajectory = [np.linalg.norm(self.env.xref[0] - infos["x"])]
+            tref_trajectory = [self.env.time_steps]
 
-            done = False
-            while not done:
+            for t in range(1, self.env.episode_len + 1):
                 with torch.no_grad():
                     a, _ = self.policy(obs, deterministic=True)
                     a = a.cpu().numpy().squeeze()
@@ -184,19 +196,23 @@ class Trainer:
 
                 next_obs, rew, term, trunc, infos = self.env.step(a)
                 trajectory.append(infos["x"][:dimension])  # Store trajectory point
+                error_trajectory.append(np.linalg.norm(self.env.xref[t] - infos["x"]))
+                tref_trajectory.append(self.env.time_steps)
                 done = term or trunc
 
                 obs = next_obs
                 ep_reward += rew
-                ep_relative_tracking_error += infos["relative_tracking_error"]
                 ep_tracking_error += infos["tracking_error"]
                 ep_control_effort += infos["control_effort"]
 
+                auc_list.append(infos["relative_tracking_error"])
+
                 if done:
+                    auc = np.trapezoid(auc_list, dx=self.env.dt)
                     ep_buffer.append(
                         {
                             "reward": ep_reward,
-                            "relative_tracking_error": ep_relative_tracking_error,
+                            "auc": auc,
                             "tracking_error": ep_tracking_error,
                             "control_effort": ep_control_effort,
                         }
@@ -219,6 +235,12 @@ class Trainer:
                         c=COLORS[str(num_episodes)],
                         label=str(num_episodes),
                     )
+
+                    error_trajs.append(error_trajectory)
+                    tref_trajs.append(tref_trajectory)
+
+                    break
+
         # Optional: Add axis labels
         ax.set_xlabel("X", labelpad=10)
         ax.set_ylabel("Y", labelpad=10)
@@ -239,24 +261,27 @@ class Trainer:
         plt.close(fig)
 
         rew_list = [ep_info["reward"] for ep_info in ep_buffer]
-        rel_list = [ep_info["relative_tracking_error"] for ep_info in ep_buffer]
+        auc_list = [ep_info["auc"] for ep_info in ep_buffer]
         trk_list = [ep_info["tracking_error"] for ep_info in ep_buffer]
         ctr_list = [ep_info["control_effort"] for ep_info in ep_buffer]
 
         rew_mean, rew_std = np.mean(rew_list), np.std(rew_list)
-        rel_mean, rel_std = np.mean(rel_list), np.std(rel_list)
+        auc_mean, auc_std = np.mean(auc_list), np.std(auc_list)
         trk_mean, trk_std = np.mean(trk_list), np.std(trk_list)
         ctr_mean, ctr_std = np.mean(ctr_list), np.std(ctr_list)
+
+        convergence_rate = self.compute_convergence_rate(tref_trajs, error_trajs)
 
         eval_dict = {
             f"{self.policy.name}/eval/rew_mean": rew_mean,
             f"{self.policy.name}/eval/rew_std": rew_std,
-            f"{self.policy.name}/eval/rel_trk_error_mean": rel_mean,
-            f"{self.policy.name}/eval/rel_trk_error_std": rel_std,
+            f"{self.policy.name}/eval/auc_mean": auc_mean,
+            f"{self.policy.name}/eval/auc_std": auc_std,
             f"{self.policy.name}/eval/trk_error_mean": trk_mean,
             f"{self.policy.name}/eval/trk_error_std": trk_std,
             f"{self.policy.name}/eval/ctr_effort_mean": ctr_mean,
             f"{self.policy.name}/eval/ctr_effort_std": ctr_std,
+            f"{self.policy.name}/eval/convergence_rate": convergence_rate,
         }
 
         return eval_dict, image_array
@@ -311,3 +336,90 @@ class Trainer:
         avg_dict = {key: sum_val / len(dict_list) for key, sum_val in sum_dict.items()}
 
         return avg_dict
+
+    import numpy as np
+
+    def compute_convergence_rate(self, tref_trajs, error_trajs, alpha=0.05):
+        """
+        Given a list of error trajectories:
+        - tref_trajs: list of lists (or arrays) for time,
+        - error_trajs: list of NumPy arrays for errors,
+        1) Use the first trajectory to find (lambda*, C*) that minimizes area under C e^{-lambda t}.
+        2) For each trajectory, fix C*, solve for the largest lambda_i such that e_i(t) <= C* e^{-lambda_i t}.
+        3) Compute ratio r_i = lambda_i / C*, gather them across all trajectories.
+        4) Return the (1 - alpha)-quantile of {r_i}.
+
+        :param tref_trajs: list of time sequences, each can be a Python list or a NumPy array
+                        e.g., [ [0, 0.1, 0.2, ...], [0, 0.05, 0.1, ...], ... ]
+        :param error_trajs: list of NumPy arrays for the corresponding error values
+                            e.g., [array([...]), array([...]), ...]
+        :param alpha: float, significance level (default=0.05).
+        :return: float, the (1 - alpha)-quantile of the ratio (lambda_i / C*) across trajectories.
+        """
+
+        # -----------------------------------------------------------
+        # Step A: Find (lambda*, C*) that minimize the AUC on the FIRST trajectory
+        # -----------------------------------------------------------
+        # Convert first trajectory time to a NumPy array (if it's not already)
+        t_ref = np.array(tref_trajs[0], dtype=np.float64)
+        e_ref = error_trajs[0]  # assumed to be a NumPy array
+
+        # The horizon T is the max time
+        T = np.max(t_ref)
+
+        def area_of_lambda(lmbd):
+            """Compute A(lambda) = C(lambda)*(1 - e^{-lmbd*T}) / lmbd, with C(lambda) >= 1."""
+            if lmbd <= 0:
+                return np.inf
+            # C(lmbd) = max(1, max_j [ e_ref[j] * exp(lmbd * t_ref[j]) ])
+            temp = np.clip(lmbd * t_ref, None, 700)  # no larger than 700
+            c_val = max(1.0, np.max(e_ref * np.exp(temp)))
+            return c_val * (1.0 - np.exp(-lmbd * T)) / lmbd
+
+        # Simple log-spaced grid search for lambda in [1e-4, 1e2]
+        lambdas = np.logspace(-4, 2, 200, dtype=np.float64)
+        areas = [area_of_lambda(l) for l in lambdas]
+        idx_min = np.argmin(areas)
+        lambda_star = lambdas[idx_min]
+
+        # Now compute C_star
+        C_star = max(1.0, np.max(e_ref * np.exp(lambda_star * t_ref)))
+
+        # -----------------------------------------------------------
+        # Step B: For each trajectory, find the largest lambda_i s.t. e(t) <= C_star e^{-lambda_i t}
+        # -----------------------------------------------------------
+        def feasible_lambda_for_trajectory(t, e, c_val):
+            """
+            Solve for the largest lambda_i satisfying
+                e[j] <= c_val * exp(-lambda_i * t[j]) for all j.
+            =>  e[j] * exp(lambda_i * t[j]) <= c_val
+            =>  lambda_i <= (1/t[j]) * ln(c_val / e[j])  for e[j]>0, t[j]>0
+            """
+            mask = (e > 0) & (t > 0)
+            if not np.any(mask):
+                # If e is zero for all t or t=0, no constraint => lambda_i can be "infinite"
+                return np.inf
+
+            e_nonzero = e[mask]
+            t_nonzero = t[mask]
+            bounds = (
+                np.log(c_val / e_nonzero) / t_nonzero
+            )  # might be inf if e_nonzero < c_val
+            return np.min(bounds)
+
+        lambda_ratios = []
+        # Convert each t_i to float array if needed, e_i is already a NumPy array
+        for t_i, e_i in zip(tref_trajs, error_trajs):
+            t_i = np.array(t_i, dtype=float)
+            e_i = np.array(e_i, dtype=float)
+            lam_i = feasible_lambda_for_trajectory(t_i, e_i, C_star)
+            ratio_i = lam_i / C_star
+            lambda_ratios.append(ratio_i)
+
+        # -----------------------------------------------------------
+        # Step C: Compute the (1 - alpha)-quantile of these ratios
+        # -----------------------------------------------------------
+        # e.g., alpha=0.05 => 95th percentile
+        lambda_ratio_quantile = np.quantile(lambda_ratios, 1 - alpha)
+
+        return lambda_ratio_quantile
