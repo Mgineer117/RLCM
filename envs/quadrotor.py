@@ -48,6 +48,11 @@ XE_INIT_MAX = np.array(
     * 10
 )
 
+# x, y, z, vx, vy, vz, force, theta_x, theta_y, theta_z
+# state_weights = np.array([1, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+# state_weights = np.array([1, 1, 1, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1])
+# state_weights = np.array([1, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1])
+# state_weights = np.array([1, 1, 1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0])
 state_weights = np.array([1, 1, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
 STATE_MIN = np.concatenate((X_MIN.flatten(), X_MIN.flatten(), UREF_MIN.flatten()))

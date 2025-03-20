@@ -27,7 +27,7 @@ def get_args():
     parser.set_defaults(use_cuda=True)
     parser.add_argument("--seed", type=int, default=42, help="Batch size.")
     parser.add_argument(
-        "--num_runs", type=int, default=10, help="Number of samples for training."
+        "--num-runs", type=int, default=10, help="Number of samples for training."
     )  # 4096 * 32
     parser.add_argument(
         "--actor-lr", type=float, default=None, help="Base learning rate."
