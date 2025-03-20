@@ -2,3 +2,4 @@ nohup python3 main.py --task car &
 nohup python3 main.py --task pvtol &
 nohup python3 main.py --task quadrotor &
 nohup python3 main.py --task neurallander &
+nohup python3 main.py --task segway &
