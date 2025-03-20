@@ -1,5 +1,5 @@
 {
-    "timesteps": 5e6,
+    "timesteps": 1e7,
     "log_interval": 50,
     "actor_lr": 2.5e-4,
     "critic_lr": 1e-3,
