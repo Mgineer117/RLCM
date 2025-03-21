@@ -57,7 +57,7 @@ def call_env(args):
     return env
 
 
-def get_policy(args):
+def get_policy(env, args):
     algo_name = args.algo_name
 
     if algo_name == "ppo":
@@ -90,6 +90,8 @@ def get_policy(args):
 
         # this was not discussed in paper nut implemented by c3m author
         effective_dim = args.effective_dim
+        f_func = env.f_func
+        B_func = env.b_func
 
         W_func = C3M_W()
         u_func = C3M_U()

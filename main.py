@@ -25,7 +25,7 @@ def run(args, seed, unique_id, exp_time):
     env = call_env(args)
     # dataset = env.get_dataset(args.quality)
 
-    policy = get_policy(args)
+    policy = get_policy(env, args)
 
     sampler = OnlineSampler(
         state_dim=args.state_dim,

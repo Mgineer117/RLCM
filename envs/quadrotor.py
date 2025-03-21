@@ -166,12 +166,10 @@ class QuadRotorEnv(gym.Env):
             xref.append(x_t)
             uref.append(u)
 
-            init_tracking_error = np.linalg.norm(x_0 - xref_0, ord=2)
-
             if termination:
                 break
 
-        return x_0, np.array(xref), np.array(uref), init_tracking_error, i
+        return x_0, np.array(xref), np.array(uref), i
 
     def dynamic_fn(self, action):
         self.time_steps += 1
@@ -225,13 +223,8 @@ class QuadRotorEnv(gym.Env):
         self.time_steps = 0
 
         if options is None:
-            (
-                self.x_0,
-                self.xref,
-                self.uref,
-                self.init_tracking_error,
-                self.episode_len,
-            ) = self.system_reset()
+            self.x_0, self.xref, self.uref, self.episode_len = self.system_reset()
+            self.init_tracking_error = np.linalg.norm(self.x_0 - self.xref[0], ord=2)
         else:
             if options.get("replace_x_0", True):
                 xe_0 = XE_INIT_MIN + np.random.rand(len(XE_INIT_MIN)) * (
@@ -239,6 +232,10 @@ class QuadRotorEnv(gym.Env):
                 )
                 x_0 = self.xref[0] + xe_0
                 self.x_0 = x_0
+
+                self.init_tracking_error = np.linalg.norm(
+                    self.x_0 - self.xref[0], ord=2
+                )
 
         self.x_t = self.x_0.copy()
         self.state = np.concatenate(

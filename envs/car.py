@@ -66,16 +66,25 @@ class CarEnv(gym.Env):
         )
 
     def f_func(self, x):
-        f = np.zeros((self.num_dim_x,))
-        f[0] = x[3] * np.cos(x[2])
-        f[1] = x[3] * np.sin(x[2])
-        return f
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape
 
-    def b_func(self, x):
-        B = np.zeros((self.num_dim_x, self.num_dim_control))
-        B[2, 0] = 1
-        B[3, 1] = 1
-        return B
+        f = np.zeros((n, self.num_dim_x))
+
+        f[:, 0] = x[:, 3] * np.cos(x[:, 2])
+        f[:, 1] = x[:, 3] * np.sin(x[:, 2])
+        return f.squeeze()
+
+    def B_func(self, x):
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape
+
+        B = np.zeros((n, self.num_dim_x, self.num_dim_control))
+        B[:, 2, 0] = 1
+        B[:, 3, 1] = 1
+        return B.squeeze()
 
     def system_reset(self):
         # with temp_seed(int(seed)):
@@ -104,7 +113,7 @@ class CarEnv(gym.Env):
             x_t = xref[-1].copy()
 
             f_x = self.f_func(x_t)
-            B_x = self.b_func(x_t)
+            B_x = self.B_func(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -118,18 +127,16 @@ class CarEnv(gym.Env):
             xref.append(x_t)
             uref.append(u)
 
-            init_tracking_error = np.linalg.norm(x_0 - xref_0, ord=2)
-
             if termination:
                 break
 
-        return x_0, np.array(xref), np.array(uref), init_tracking_error, i
+        return x_0, np.array(xref), np.array(uref), i
 
     def dynamic_fn(self, action):
         self.time_steps += 1
 
         f_x = self.f_func(self.x_t)
-        B_x = self.b_func(self.x_t)
+        B_x = self.B_func(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()
@@ -176,13 +183,8 @@ class CarEnv(gym.Env):
         self.time_steps = 0
 
         if options is None:
-            (
-                self.x_0,
-                self.xref,
-                self.uref,
-                self.init_tracking_error,
-                self.episode_len,
-            ) = self.system_reset()
+            self.x_0, self.xref, self.uref, self.episode_len = self.system_reset()
+            self.init_tracking_error = np.linalg.norm(self.x_0 - self.xref[0], ord=2)
         else:
             if options.get("replace_x_0", True):
                 xe_0 = XE_INIT_MIN + np.random.rand(len(XE_INIT_MIN)) * (
@@ -190,6 +192,7 @@ class CarEnv(gym.Env):
                 )
                 x_0 = self.xref[0] + xe_0
                 self.x_0 = x_0
+
                 self.init_tracking_error = np.linalg.norm(
                     self.x_0 - self.xref[0], ord=2
                 )
@@ -198,6 +201,7 @@ class CarEnv(gym.Env):
         self.state = np.concatenate(
             (self.x_t, self.xref[self.time_steps], self.uref[self.time_steps])
         )
+
         return self.state, {"x": self.x_t}
 
     def step(self, action):

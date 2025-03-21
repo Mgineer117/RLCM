@@ -1,5 +1,5 @@
-nohup python3 main.py --task car &
-nohup python3 main.py --task pvtol &
-nohup python3 main.py --task quadrotor &
-nohup python3 main.py --task neurallander &
-nohup python3 main.py --task segway &
+nohup python3 main.py --task car --project RLCM &
+nohup python3 main.py --task pvtol --project RLCM &
+nohup python3 main.py --task quadrotor --project RLCM &
+nohup python3 main.py --task neurallander --project RLCM &
+nohup python3 main.py --task segway --project RLCM &

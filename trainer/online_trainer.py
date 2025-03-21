@@ -79,7 +79,7 @@ class Trainer:
 
             def lr_lambda(step):
                 # linearly decay from 1.0 at step=0 to 0.0 at step=max_steps
-                return 1.0 - float(step) / float(self.timesteps)
+                return 1.0 - float(step) / float(self.nupdates)
 
             lr_scheduler = LambdaLR(self.policy.optimizer, lr_lambda=lr_lambda)
         else:
@@ -119,7 +119,7 @@ class Trainer:
 
                 #### LR-SCHEDULING ####
                 if lr_scheduler is not None:
-                    lr_scheduler.step(step)
+                    lr_scheduler.step()
 
                 #### EVALUATIONS ####
                 if step >= self.eval_interval * (eval_idx + 1):

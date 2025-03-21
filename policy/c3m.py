@@ -3,7 +3,10 @@ import os
 import pickle
 import torch
 import torch.nn as nn
+from torch.autograd import grad
+from torch import matmul, inverse, transpose
 import numpy as np
+from typing import Callable
 
 # from utils.torch import get_flat_grad_from, get_flat_params_from, set_flat_params_to
 from utils.rl import estimate_advantages
@@ -19,7 +22,13 @@ class C3M(Base):
         self,
         W_func: nn.Module,
         u_func: nn.Module,
+        f_func: Callable,
+        B_func: Callable,
+        Bbot_func: Callable,
         lr: float = 3e-4,
+        lbd: float = 1e-2,
+        eps: float = 1e-2,
+        w_ub: float = 1e-2,
         num_minibatch: int = 8,
         minibatch_size: int = 256,
         device: str = "cpu",
@@ -30,6 +39,8 @@ class C3M(Base):
         self.name = "C3M"
         self.device = device
 
+        self.state_dim = u_func.state_dim
+        self.action_dim = u_func.action_dim
         self.num_minibatch = num_minibatch
         self.minibatch_size = minibatch_size
 
@@ -38,28 +49,115 @@ class C3M(Base):
         # trainable networks
         self.W_func = W_func
         self.u_func = u_func
+        self.f_func = f_func
+        self.B_func = B_func
+        if Bbot_func is None:
+            self.Bbot_func = self.B_null
+        else:
+            self.Bbot_func = Bbot_func
+        self.lbd = lbd
+        self.eps = eps
+        self.w_ub = w_ub
 
-        self.W_optimizer = torch.optim.Adam(params=self.W_func, lr=lr)
-        self.u_optimizer = torch.optim.Adam(params=self.u_func, lr=lr)
+        self.optimizers = torch.optim.Adam(
+            {"params": self.W_func.parameters(), "lr": lr},
+            {"params": self.u_func.parameters(), "lr": lr},
+        )
 
         #
+        self.dummy = torch.tensor(1e-5)
         self.to(self.device)
 
     def to_device(self, device):
         self.device = device
         self.to(device)
 
-    def forward(self, obs: np.ndarray, deterministic: bool = False):
+    def forward(self, state: np.ndarray, deterministic: bool = False):
         self._forward_steps += 1
-        obs = torch.from_numpy(obs).to(self._dtype).to(self.device)
+        state = torch.from_numpy(state).to(self._dtype).to(self.device)
 
-        a, metaData = self.actor(obs, deterministic=deterministic)
+        a = self.u_func(state)
 
         return a, {
-            "probs": metaData["probs"],
-            "logprobs": metaData["logprobs"],
-            "entropy": metaData["entropy"],
+            "probs": self.dummy,  # dummy for code consistency
+            "logprobs": self.dummy,
+            "entropy": self.dummy,
         }
+
+    def B_null(self, states):
+        n = states.shape[0]
+        Bbot = torch.cat(
+            (
+                torch.eye(
+                    self.state_dim - self.action_dim, self.state_dim - self.action_dim
+                ),
+                torch.zeros(self.action_dim, self.state_dim - self.action_dim),
+            ),
+            dim=0,
+        )
+        Bbot.unsqueeze(0).to(self.device)
+        return Bbot.repeat(n, 1, 1)
+
+    def Jacobian(self, f, states):
+        # NOTE that this function assume that data are independent of each other
+        f = f + 0.0 * states.sum()  # to avoid the case that f is independent of x
+
+        n = states.shape[0]
+        f_dim = f.shape[-1]
+        state_dim = states.shape[-1]
+
+        J = torch.zeros(n, f_dim, state_dim).to(states.type())
+        for i in range(f_dim):
+            J[:, i, :] = grad(f[:, i].sum(), states, create_graph=True)[0]
+        return J
+
+    def Jacobian_Matrix(self, M, states):
+        # NOTE that this function assume that data are independent of each other
+        n = states.shape[0]
+        matrix_dim = M.shape[-1]
+        state_dim = states.shape[-1]
+
+        J = torch.zeros(n, matrix_dim, matrix_dim, state_dim).to(states.type())
+        for i in range(matrix_dim):
+            for j in range(matrix_dim):
+                J[:, i, j, :] = grad(M[:, i, j].sum(), states, create_graph=True)[0]
+
+        return J
+
+    def B_Jacobian(self, B, states):
+        n = states.shape[0]
+        b_dim = B.shape[-1]
+        state_dim = states.shape[-1]
+
+        DBDx = torch.zeros(n, state_dim, state_dim, b_dim).to(states.type())
+        for i in range(b_dim):
+            DBDx[:, :, :, i] = self.Jacobian(B[:, :, i], states)
+        return DBDx
+
+    def weighted_gradients(self, W, v, x):
+        # v, x: bs x n x 1
+        # DWDx: bs x n x n x n
+        assert v.size() == x.size()
+        bs = x.shape[0]
+        return (self.Jacobian_Matrix(W, x) * v.view(bs, 1, 1, -1)).sum(dim=3)
+
+    def loss_pos_matrix_random_sampling(self, A):
+        # A: n x d x d
+        # z: K x d
+        K = 1024
+        zT = torch.randn((K, A.size(-1))).to(self.device)
+        zT = zT / zT.norm(dim=-1, keepdim=True)
+        z = transpose(zT)
+
+        # K x d @ d x d = n x K x d
+        zTAz = matmul(matmul(zT, A), z)
+
+        negative_index = zTAz.detach().cpu().numpy() < 0
+        if negative_index.sum() > 0:
+            negative_zTAz = zTAz[negative_index]
+            return -1.0 * (negative_zTAz.mean())
+        else:
+            return torch.tensor(0.0).type(z.type()).requires_grad_()
 
     def learn(self, batch):
         """Performs a single training step using PPO, incorporating all reference training steps."""
@@ -71,174 +169,111 @@ class C3M(Base):
             return torch.from_numpy(data).to(self._dtype).to(self.device)
 
         states = to_tensor(batch["states"])
-        actions = to_tensor(batch["actions"])
+        actions = to_tensor(batch["actions"])  # n, action_dim
         rewards = to_tensor(batch["rewards"])
         terminals = to_tensor(batch["terminals"])
-        old_logprobs = to_tensor(batch["logprobs"])
 
-        # Compute advantages and returns
-        with torch.no_grad():
-            values = self.critic(states)
-            advantages, returns = estimate_advantages(
-                rewards,
-                terminals,
-                values,
-                gamma=self._gamma,
-                gae=self._gae,
-                device=self.device,
-            )
+        #### COMPUTE INGREDIENTS ####
+        W = self.W_func(states)  # n, state_dim, state_dim
+        M = inverse(W)  # n, state_dim, state_dim
 
-        # Mini-batch training
-        batch_size = states.size(0)
+        f = self.f_func(states)  # n, state_dim
+        B = self.B_func(states)  # n, state_dim, action
 
-        # List to track actor loss over minibatches
-        losses = []
-        actor_losses = []
-        value_losses = []
-        entropy_losses = []
+        DfDx = self.Jacobian(f, states)  # n, f_dim, state_dim
+        DBDx = self.B_Jacobian(B, states)  # n, state_dim, state_dim, b_dim
+        Bbot = self.Bbot_func(states)  # n, state_dim, state - action dim
 
-        clip_fractions = []
-        target_kl = []
-        grad_dicts = []
+        # since online we do not do below
+        # u = u_func(x, x - xref, uref)  # u: bs x m x 1 # TODO: x - xref
+        K = self.Jacobian(actions, states)  # n, f_dim, state_dim
 
-        for k in range(self._K):
-            for n in range(self.num_minibatch):
-                indices = torch.randperm(batch_size)[: self.minibatch_size]
-                mb_states, mb_actions = states[indices], actions[indices]
-                mb_old_logprobs, mb_returns = old_logprobs[indices], returns[indices]
+        #  actions[:, i]: n, 1, 1
+        #  DBDx[:, :, :, i]: n, state_dim, state_dim
+        A = DfDx + sum(
+            [
+                actions[:, i].unsqueeze(-1).unsqueeze(-1) * DBDx[:, :, :, i]
+                for i in range(self.action_dim)
+            ]
+        )
 
-                # advantages
-                mb_advantages = advantages[indices]
-                mb_advantages = (
-                    mb_advantages - mb_advantages.mean()
-                ) / mb_advantages.std()
+        dot_x = f + matmul(B, actions)
+        dot_M = self.weighted_gradients(M, dot_x, states)
+        dot_W = self.weighted_gradients(W, dot_x, states)
 
-                # 1. Critic Update (with optional regularization)
-                mb_values = self.critic(mb_states)
-                value_loss = self.mse_loss(mb_values, mb_returns)
-                l2_reg = (
-                    sum(param.pow(2).sum() for param in self.critic.parameters())
-                    * self._l2_reg
-                )
-                value_loss += l2_reg
+        # contraction condition
+        ABK = A + matmul(B, K)
+        MABK = matmul(M, ABK)
+        sym_MABK = MABK + transpose(MABK)
+        C_u = dot_M + sym_MABK + 2 * self.lbd * M
 
-                # Track value loss for logging
-                value_losses.append(value_loss.item())
+        # C1
+        DfW = self.weighted_gradients(W, f, states)
+        DfDxW = matmul(DfDx, W)
+        sym_DfDxW = DfDxW + transpose(DfDxW)
 
-                # 2. actor Update
-                _, metaData = self.actor(mb_states)
-                logprobs = self.actor.log_prob(metaData["dist"], mb_actions)
-                entropy = self.actor.entropy(metaData["dist"])
-                ratios = torch.exp(logprobs - mb_old_logprobs)
+        # this has to be a negative definite matrix
+        C1_inner = -DfW + sym_DfDxW + 2 * self.lbd * M
+        C1 = matmul(matmul(transpose(Bbot), C1_inner), Bbot)
 
-                surr1 = ratios * mb_advantages
-                surr2 = (
-                    torch.clamp(ratios, 1 - self._eps, 1 + self._eps) * mb_advantages
-                )
-                actor_loss = -torch.min(surr1, surr2).mean()
-                entropy_loss = self._entropy_scaler * entropy.mean()
+        C2_inner = []
+        C2s = []
+        for j in range(self.action_dim):
+            DbW = self.weighted_gradients(W, B[:, :, j], states)
+            DbDxW = matmul(DBDx, W)
+            sym_DbDxW = DbDxW + transpose(DbDxW)
+            C2_inner = DbW - DbDxW
+            C2 = matmul(matmul(transpose(Bbot), C2_inner), Bbot)
 
-                # Track actor loss for logging
-                actor_losses.append(actor_loss.item())
-                entropy_losses.append(entropy_loss.item())
+            C2_inner.append(C2_inner)
+            C2s.append(C2)
 
-                # Total loss
-                loss = actor_loss + 0.5 * value_loss - entropy_loss
-                losses.append(loss.item())
+        #### COMPUTE LOSS ####
+        pd_loss = self.loss_pos_matrix_random_sampling(
+            -C_u - self.eps * torch.eye(C_u.shape[-1]).to(C_u.type())
+        )
+        c1_loss = self.loss_pos_matrix_random_sampling(
+            -C1 - self.eps * torch.eye(C1.shape[-1]).to(C1.type())
+        )
+        c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        overshoot_loss = self.loss_pos_matrix_random_sampling(
+            self.w_ub * torch.eye(W.shape[-1]).to(W.type()) - W
+        )
 
-                # Compute clip fraction (for logging)
-                clip_fraction = torch.mean(
-                    (torch.abs(ratios - 1) > self._eps).float()
-                ).item()
-                clip_fractions.append(clip_fraction)
+        loss = pd_loss + c1_loss + c2_loss + overshoot_loss
 
-                # Check if KL divergence exceeds target KL for early stopping
-                kl_div = torch.mean(mb_old_logprobs - logprobs)
-                target_kl.append(kl_div.item())
-                if kl_div.item() > self._target_kl:
-                    break
-
-                # Update critic parameters
-                self.optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5)
-                grad_dict = self.compute_gradient_norm(
-                    [self.actor, self.critic],
-                    ["actor", "critic"],
-                    dir="PPO",
-                    device=self.device,
-                )
-                grad_dicts.append(grad_dict)
-                self.optimizer.step()
-
-            if kl_div.item() > self._target_kl:
-                break
+        self.optimizers.zero_grad()
+        loss.backward()
+        grad_dict = self.compute_gradient_norm(
+            [self.W_func, self.u_func],
+            ["W_func", "u_func"],
+            dir="C3M",
+            device=self.device,
+        )
+        self.optimizers.step()
 
         # Logging
         loss_dict = {
-            "PPO/loss/loss": np.mean(losses),
-            "PPO/loss/actor_loss": np.mean(actor_losses),
-            "PPO/loss/value_loss": np.mean(value_losses),
-            "PPO/loss/entropy_loss": np.mean(entropy_losses),
-            "PPO/analytics/clip_fraction": np.mean(clip_fractions),
-            "PPO/analytics/klDivergence": target_kl[-1],
-            "PPO/analytics/K-epoch": k + 1,
-            "PPO/analytics/avg_rewards": (
-                torch.sum(rewards) / torch.sum(terminals)
-            ).item(),
+            "C3M/loss/loss": np.mean(loss),
+            "C3M/loss/pd_loss": np.mean(pd_loss),
+            "C3M/loss/c1_loss": np.mean(c1_loss),
+            "C3M/loss/c2_loss": np.mean(c2_loss),
+            "C3M/loss/overshoot_loss": np.mean(overshoot_loss),
+            "C3M/analytics/avg_rewards": torch.mean(rewards).item(),
         }
-        grad_dict = self.average_dict_values(grad_dicts)
         norm_dict = self.compute_weight_norm(
-            [self.actor, self.critic],
-            ["actor", "critic"],
-            dir="PPO",
+            [self.W_func, self.u_func],
+            ["W_func", "u_func"],
+            dir="C3M",
             device=self.device,
         )
         loss_dict.update(grad_dict)
         loss_dict.update(norm_dict)
 
         # Cleanup
-        del states, actions, rewards, terminals, old_logprobs
+        del states, actions, rewards, terminals
         self.eval()
 
         timesteps = self.num_minibatch * self.minibatch_size
         update_time = time.time() - t0
         return loss_dict, timesteps, update_time
-
-    def average_dict_values(self, dict_list):
-        if not dict_list:
-            return {}
-
-        # Initialize a dictionary to hold the sum of values and counts for each key
-        sum_dict = {}
-        count_dict = {}
-
-        # Iterate over each dictionary in the list
-        for d in dict_list:
-            for key, value in d.items():
-                if key not in sum_dict:
-                    sum_dict[key] = 0
-                    count_dict[key] = 0
-                sum_dict[key] += value
-                count_dict[key] += 1
-
-        # Calculate the average for each key
-        avg_dict = {key: sum_val / count_dict[key] for key, sum_val in sum_dict.items()}
-
-        return avg_dict
-
-    def save_model(self, logdir, epoch=None, is_best=False):
-        self.actor = self.actor.cpu()
-        self.critic = self.critic.cpu()
-
-        # save checkpoint
-        if is_best:
-            path = os.path.join(logdir, "best_model.p")
-        else:
-            path = os.path.join(logdir, "model_" + str(epoch) + ".p")
-        pickle.dump(
-            (self.actor, self.critic),
-            open(path, "wb"),
-        )
-        self.actor = self.actor.to(self.device)
-        self.critic = self.critic.to(self.device)
