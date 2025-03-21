@@ -17,19 +17,11 @@ from policy.base import Base
 class C3M(Base):
     def __init__(
         self,
-        actor: nn.Module,
-        critic: nn.Module,
-        actor_lr: float = 3e-4,
-        critic_lr: float = 5e-4,
+        W_func: nn.Module,
+        u_func: nn.Module,
+        lr: float = 3e-4,
         num_minibatch: int = 8,
         minibatch_size: int = 256,
-        eps: float = 0.2,
-        entropy_scaler: float = 1e-3,
-        l2_reg: float = 1e-5,
-        target_kl: float = 0.03,
-        gamma: float = 0.99,
-        gae: float = 0.9,
-        K: int = 5,
         device: str = "cpu",
     ):
         super(C3M, self).__init__()
@@ -40,25 +32,15 @@ class C3M(Base):
 
         self.num_minibatch = num_minibatch
         self.minibatch_size = minibatch_size
-        self._entropy_scaler = entropy_scaler
-        self._eps = eps
-        self._gamma = gamma
-        self._gae = gae
-        self._K = K
-        self._l2_reg = l2_reg
-        self._target_kl = target_kl
+
         self._forward_steps = 0
 
         # trainable networks
-        self.actor = actor
-        self.critic = critic
+        self.W_func = W_func
+        self.u_func = u_func
 
-        self.optimizer = torch.optim.Adam(
-            [
-                {"params": self.actor.parameters(), "lr": actor_lr},
-                {"params": self.critic.parameters(), "lr": critic_lr},
-            ]
-        )
+        self.W_optimizer = torch.optim.Adam(params=self.W_func, lr=lr)
+        self.u_optimizer = torch.optim.Adam(params=self.u_func, lr=lr)
 
         #
         self.to(self.device)

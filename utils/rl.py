@@ -84,4 +84,15 @@ def get_policy(args):
             K=args.K_epochs,
             device=args.device,
         )
+    elif algo_name == "c3m":
+        from policy.c3m import C3M
+        from policy.layers.c3m_networks import C3M_W, C3M_U
+
+        # this was not discussed in paper nut implemented by c3m author
+        effective_dim = args.effective_dim
+
+        W_func = C3M_W()
+        u_func = C3M_U()
+        policy = C3M(W_func=W_func, u_func=u_func)
+
     return policy
