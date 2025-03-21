@@ -75,13 +75,14 @@ def Fa_func(z, vx, vy, vz):
     if next(Fa_model.parameters()).device != z.device:
         Fa_model.to(z.device)
     # use prediction from NN as ground truth
-    state = torch.zeros((12,))
-    state[0] = z + drone_height
-    state[1] = vx  # velocity
-    state[2] = vy  # velocity
-    state[3] = vz  # velocity
-    state[7] = 1.0
-    state[8:12] = 6508.0 / 8000
+    n = z.shape[0]
+    state = torch.zeros((n, 12))
+    state[:, 0] = z + drone_height
+    state[:, 1] = vx  # velocity
+    state[:, 2] = vy  # velocity
+    state[:, 3] = vz  # velocity
+    state[:, 7] = 1.0
+    state[:, 8:12] = 6508.0 / 8000
 
     with torch.no_grad():
         Fa = Fa_model(state) * torch.tensor([30.0, 15.0, 10.0])
@@ -90,10 +91,12 @@ def Fa_func(z, vx, vy, vz):
 
 
 def Fa_func_np(x):
-    z = torch.tensor(x[2]).float().view(1, -1)
-    vx = torch.tensor(x[3]).float().view(1, -1)
-    vy = torch.tensor(x[4]).float().view(1, -1)
-    vz = torch.tensor(x[5]).float().view(1, -1)
+    if len(x.shape) == 1:
+        x = x[np.newaxis, :]
+    z = torch.tensor(x[:, 2]).float().view(1, -1)
+    vx = torch.tensor(x[:, 3]).float().view(1, -1)
+    vy = torch.tensor(x[:, 4]).float().view(1, -1)
+    vz = torch.tensor(x[:, 5]).float().view(1, -1)
     Fa = Fa_func(z, vx, vy, vz).numpy()
     return Fa
 
@@ -131,27 +134,34 @@ class NeuralLanderEnv(gym.Env):
     def f_func(self, x):
         # x: bs x n x 1
         # f: bs x n x 1
-        x, y, z, vx, vy, vz = [x[i] for i in range(self.num_dim_x)]
-        f = np.zeros((self.num_dim_x,))
-        f[0] = vx
-        f[1] = vy
-        f[2] = vz
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape[0]
 
-        Fa = Fa_func(z, vx, vy, vz)
+        Fa = Fa_func_np(x)
+        x, y, z, vx, vy, vz = [x[:, i] for i in range(self.num_dim_x)]
 
-        f[3] = Fa[0] / mass
-        f[4] = Fa[1] / mass
-        f[5] = Fa[2] / mass - g
+        f = np.zeros((n, self.num_dim_x))
+        f[:, 0] = vx
+        f[:, 1] = vy
+        f[:, 2] = vz
+        f[:, 3] = Fa[:, 0] / mass
+        f[:, 4] = Fa[:, 1] / mass
+        f[:, 5] = Fa[:, 2] / mass - g
 
-        return f
+        return f.squeeze()
 
-    def b_func(self, x):
-        B = np.zeros((self.num_dim_x, self.num_dim_control))
+    def B_func(self, x):
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape[0]
 
-        B[3, 0] = 1
-        B[4, 1] = 1
-        B[5, 2] = 1
-        return B
+        B = np.zeros((n, self.num_dim_x, self.num_dim_control))
+
+        B[:, 3, 0] = 1
+        B[:, 4, 1] = 1
+        B[:, 5, 2] = 1
+        return B.squeeze()
 
     def system_reset(self):
         # with temp_seed(int(seed)):
@@ -187,7 +197,7 @@ class NeuralLanderEnv(gym.Env):
             x_t = xref[-1].copy()
 
             f_x = self.f_func(x_t)
-            B_x = self.b_func(x_t)
+            B_x = self.B_func(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -210,7 +220,7 @@ class NeuralLanderEnv(gym.Env):
         self.time_steps += 1
 
         f_x = self.f_func(self.x_t)
-        B_x = self.b_func(self.x_t)
+        B_x = self.B_func(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()
@@ -279,7 +289,7 @@ class NeuralLanderEnv(gym.Env):
 
     def step(self, action):
         # policy output ranges [-1, 1]
-        action = self.uref[self.time_steps] + action
+        # action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)

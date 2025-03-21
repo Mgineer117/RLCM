@@ -94,29 +94,37 @@ class QuadRotorEnv(gym.Env):
     def f_func(self, x):
         # x: bs x n x 1
         # f: bs x n x 1
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape[0]
+
         x, y, z, vx, vy, vz, force, theta_x, theta_y = [
-            x[i] for i in range(self.num_dim_x)
+            x[:, i] for i in range(self.num_dim_x)
         ]
-        f = np.zeros((self.num_dim_x,))
-        f[0] = vx
-        f[1] = vy
-        f[2] = vz
-        f[3] = -force * np.sin(theta_y)
-        f[4] = force * np.cos(theta_y) * np.sin(theta_x)
-        f[5] = g - force * np.cos(theta_y) * np.cos(theta_x)
-        f[6] = 0
-        f[7] = 0
-        f[8] = 0
+        f = np.zeros((n, self.num_dim_x))
+        f[:, 0] = vx
+        f[:, 1] = vy
+        f[:, 2] = vz
+        f[:, 3] = -force * np.sin(theta_y)
+        f[:, 4] = force * np.cos(theta_y) * np.sin(theta_x)
+        f[:, 5] = g - force * np.cos(theta_y) * np.cos(theta_x)
+        f[:, 6] = 0
+        f[:, 7] = 0
+        f[:, 8] = 0
 
-        return f
+        return f.squeeze()
 
-    def b_func(self, x):
-        B = np.zeros((self.num_dim_x, self.num_dim_control))
+    def B_func(self, x):
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape[0]
 
-        B[6, 0] = 1
-        B[7, 1] = 1
-        B[8, 2] = 1
-        return B
+        B = np.zeros((n, self.num_dim_x, self.num_dim_control))
+
+        B[:, 6, 0] = 1
+        B[:, 7, 1] = 1
+        B[:, 8, 2] = 1
+        return B.squeeze()
 
     def system_reset(self):
         # with temp_seed(int(seed)):
@@ -152,7 +160,7 @@ class QuadRotorEnv(gym.Env):
             x_t = xref[-1].copy()
 
             f_x = self.f_func(x_t)
-            B_x = self.b_func(x_t)
+            B_x = self.B_func(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -175,7 +183,7 @@ class QuadRotorEnv(gym.Env):
         self.time_steps += 1
 
         f_x = self.f_func(self.x_t)
-        B_x = self.b_func(self.x_t)
+        B_x = self.B_func(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()
@@ -246,7 +254,7 @@ class QuadRotorEnv(gym.Env):
 
     def step(self, action):
         # policy output ranges [-1, 1]
-        action = self.uref[self.time_steps] + action
+        # action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)

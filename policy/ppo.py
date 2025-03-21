@@ -38,6 +38,8 @@ class PPO(Base):
         self.name = "PPO"
         self.device = device
 
+        self.action_dim = actor.action_dim
+
         self.num_minibatch = num_minibatch
         self.minibatch_size = minibatch_size
         self._entropy_scaler = entropy_scaler
@@ -67,11 +69,11 @@ class PPO(Base):
         self.device = device
         self.to(device)
 
-    def forward(self, obs: np.ndarray, deterministic: bool = False):
+    def forward(self, state: np.ndarray, deterministic: bool = False):
         self._forward_steps += 1
-        obs = torch.from_numpy(obs).to(self._dtype).to(self.device)
+        state = torch.from_numpy(state).to(self._dtype).to(self.device)
 
-        a, metaData = self.actor(obs, deterministic=deterministic)
+        a, metaData = self.actor(state, deterministic=deterministic)
 
         return a, {
             "probs": metaData["probs"],

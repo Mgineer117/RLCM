@@ -72,7 +72,7 @@ class OnlineSampler(Base):
         action_dim: int,
         episode_len: int,
         batch_size: int,
-        min_batch_for_worker: int = 8192,
+        min_batch_for_worker: int = 1024,
         cpu_preserve_rate: float = 0.95,
         num_cores: int | None = None,
         verbose: bool = True,
@@ -152,18 +152,14 @@ class OnlineSampler(Base):
             for i in range(self.num_workers_per_round[round_number]):
                 if worker_idx == self.total_num_worker - 1:
                     # Main thread process
-                    try:
-                        memory = self.collect_trajectory(
-                            worker_idx,
-                            None,
-                            env,
-                            policy,
-                            seed=seed,
-                            deterministic=deterministic,
-                        )
-                    except Exception as e:
-                        print(f"Main thread worker {worker_idx} failed: {e}")
-                        memory = None
+                    memory = self.collect_trajectory(
+                        worker_idx,
+                        None,
+                        env,
+                        policy,
+                        seed=seed,
+                        deterministic=deterministic,
+                    )
                 else:
                     # Sub-thread process
                     worker_args = (

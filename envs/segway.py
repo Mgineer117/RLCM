@@ -69,33 +69,41 @@ class SegwayEnv(gym.Env):
     def f_func(self, x):
         # x: bs x n x 1
         # f: bs x n x 1
-        p, theta, v, omega = [x[i] for i in range(self.num_dim_x)]
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape[0]
 
-        f = np.zeros((self.num_dim_x,))
-        f[0] = v
-        f[1] = omega
-        f[2] = (
+        p, theta, v, omega = [x[:, i] for i in range(self.num_dim_x)]
+
+        f = np.zeros((n, self.num_dim_x))
+        f[:, 0] = v
+        f[:, 1] = omega
+        f[:, 2] = (
             np.cos(theta) * (9.8 * np.sin(theta) + 11.5 * v)
             + 68.4 * v
             - 1.2 * (omega**2) * np.sin(theta)
         ) / (np.cos(theta) - 24.7)
-        f[3] = (
+        f[:, 3] = (
             -58.8 * v * np.cos(theta)
             - 243.5 * v
             - np.sin(theta) * (208.3 + (omega**2) * np.cos(theta))
         ) / (np.cos(theta) ** 2 - 24.7)
 
-        return f
+        return f.squeeze(0)
 
-    def b_func(self, x):
-        p, theta, v, omega = [x[i] for i in range(self.num_dim_x)]
+    def B_func(self, x):
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape[0]
 
-        B = np.zeros((self.num_dim_x, self.num_dim_control))
+        p, theta, v, omega = [x[:, i] for i in range(self.num_dim_x)]
 
-        B[2, 0] = (-1.8 * np.cos(theta) - 10.9) / (np.cos(theta) - 24.7)
-        B[3, 0] = (9.3 * np.cos(theta) + 38.6) / (np.cos(theta) ** 2 - 24.7)
+        B = np.zeros((n, self.num_dim_x, self.num_dim_control))
 
-        return B
+        B[:, 2, 0] = (-1.8 * np.cos(theta) - 10.9) / (np.cos(theta) - 24.7)
+        B[:, 3, 0] = (9.3 * np.cos(theta) + 38.6) / (np.cos(theta) ** 2 - 24.7)
+
+        return B.squeeze(0)
 
     def system_reset(self):
         # with temp_seed(int(seed)):
@@ -130,7 +138,7 @@ class SegwayEnv(gym.Env):
             x_t = xref[-1].copy()
 
             f_x = self.f_func(x_t)
-            B_x = self.b_func(x_t)
+            B_x = self.B_func(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -153,7 +161,7 @@ class SegwayEnv(gym.Env):
         self.time_steps += 1
 
         f_x = self.f_func(self.x_t)
-        B_x = self.b_func(self.x_t)
+        B_x = self.B_func(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()
@@ -222,7 +230,7 @@ class SegwayEnv(gym.Env):
 
     def step(self, action):
         # policy output ranges [-1, 1]
-        action = self.uref[self.time_steps] + action
+        # action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)

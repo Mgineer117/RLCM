@@ -65,7 +65,9 @@ def get_policy(env, args):
         from policy.layers.ppo_networks import PPO_Actor, PPO_Critic
 
         actor = PPO_Actor(
-            args.state_dim, hidden_dim=args.actor_dim, a_dim=args.action_dim
+            args.state_dim,
+            hidden_dim=args.actor_dim,
+            a_dim=args.action_dim,
         )
         critic = PPO_Critic(args.state_dim, hidden_dim=args.critic_dim)
 

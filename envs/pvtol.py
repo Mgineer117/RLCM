@@ -73,24 +73,32 @@ class PvtolEnv(gym.Env):
     def f_func(self, x):
         # x: bs x n x 1
         # f: bs x n x 1
-        p_x, p_z, phi, v_x, v_z, dot_phi = [x[i] for i in range(self.num_dim_x)]
-        f = np.zeros((self.num_dim_x,))
-        f[0] = v_x * np.cos(phi) - v_z * np.sin(phi)
-        f[1] = v_x * np.sin(phi) + v_z * np.cos(phi)
-        f[2] = dot_phi
-        f[3] = v_z * dot_phi - g * np.sin(phi)
-        f[4] = -v_x * dot_phi - g * np.cos(phi)
-        f[5] = 0
-        return f
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape[0]
 
-    def b_func(self, x):
-        B = np.zeros((self.num_dim_x, self.num_dim_control))
+        p_x, p_z, phi, v_x, v_z, dot_phi = [x[:, i] for i in range(self.num_dim_x)]
+        f = np.zeros((n, self.num_dim_x))
+        f[:, 0] = v_x * np.cos(phi) - v_z * np.sin(phi)
+        f[:, 1] = v_x * np.sin(phi) + v_z * np.cos(phi)
+        f[:, 2] = dot_phi
+        f[:, 3] = v_z * dot_phi - g * np.sin(phi)
+        f[:, 4] = -v_x * dot_phi - g * np.cos(phi)
+        f[:, 5] = 0
+        return f.squeeze()
 
-        B[4, 0] = 1 / m
-        B[4, 1] = 1 / m
-        B[5, 0] = l / J
-        B[5, 1] = -l / J
-        return B
+    def B_func(self, x):
+        if len(x.shape) == 1:
+            x = x[np.newaxis, :]
+        n = x.shape[0]
+
+        B = np.zeros((n, self.num_dim_x, self.num_dim_control))
+
+        B[:, 4, 0] = 1 / m
+        B[:, 4, 1] = 1 / m
+        B[:, 5, 0] = l / J
+        B[:, 5, 1] = -l / J
+        return B.squeeze()
 
     def system_reset(self):
         # with temp_seed(int(seed)):
@@ -124,7 +132,7 @@ class PvtolEnv(gym.Env):
             x_t = xref[-1].copy()
 
             f_x = self.f_func(x_t)
-            B_x = self.b_func(x_t)
+            B_x = self.B_func(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -147,7 +155,7 @@ class PvtolEnv(gym.Env):
         self.time_steps += 1
 
         f_x = self.f_func(self.x_t)
-        B_x = self.b_func(self.x_t)
+        B_x = self.B_func(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()
@@ -216,7 +224,7 @@ class PvtolEnv(gym.Env):
 
     def step(self, action):
         # policy output ranges [-1, 1]
-        action = self.uref[self.time_steps] + action
+        # action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)

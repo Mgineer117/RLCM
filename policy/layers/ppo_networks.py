@@ -25,7 +25,7 @@ class PPO_Actor(nn.Module):
         # |A| duplicate networks
         self.act = activation
 
-        self._a_dim = a_dim
+        self.action_dim = a_dim
         self.is_discrete = is_discrete
 
         self.model = MLP(
