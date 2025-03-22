@@ -38,6 +38,12 @@ def get_args():
     parser.add_argument(
         "--critic-lr", type=float, default=None, help="Base learning rate."
     )
+    parser.add_argument("--W-lr", type=float, default=None, help="Base learning rate.")
+    parser.add_argument("--u-lr", type=float, default=None, help="Base learning rate.")
+    parser.add_argument("--w-ub", type=float, default=None, help="Base learning rate.")
+    parser.add_argument("--w-lb", type=float, default=None, help="Base learning rate.")
+    parser.add_argument("--eps", type=float, default=None, help="Base learning rate.")
+    parser.add_argument("--lbd", type=float, default=None, help="Base learning rate.")
     parser.add_argument(
         "--actor-dim", type=list, default=None, help="Base learning rate."
     )
@@ -63,9 +69,6 @@ def get_args():
     parser.add_argument("--num-minibatch", type=int, default=None, help="")
     parser.add_argument("--minibatch-size", type=int, default=None, help="")
     parser.add_argument("--K-epochs", type=int, default=None, help="")
-    parser.add_argument(
-        "--eps", type=float, default=0.2, help="Convergence rate: lambda"
-    )
     parser.add_argument(
         "--target-kl",
         type=float,

@@ -18,7 +18,7 @@ from trainer.online_trainer import Trainer
 
 def run(args, seed, unique_id, exp_time):
     # fix seed
-    seed = 1_234_567
+    # seed = 1_234_567
     seed_all(seed)
 
     # get env
@@ -43,6 +43,7 @@ def run(args, seed, unique_id, exp_time):
         writer=writer,
         timesteps=args.timesteps,
         log_interval=args.log_interval,
+        eval_num=args.eval_num,
         eval_episodes=args.eval_episodes,
         seed=args.seed,
     )

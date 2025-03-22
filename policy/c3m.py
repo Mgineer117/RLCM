@@ -20,12 +20,17 @@ from policy.base import Base
 class C3M(Base):
     def __init__(
         self,
+        x_dim: int,
+        state_dim: int,
+        effective_indices: list,
+        action_dim: int,
         W_func: nn.Module,
         u_func: nn.Module,
         f_func: Callable,
         B_func: Callable,
         Bbot_func: Callable,
-        lr: float = 3e-4,
+        W_lr: float = 3e-4,
+        u_lr: float = 3e-4,
         lbd: float = 1e-2,
         eps: float = 1e-2,
         w_ub: float = 1e-2,
@@ -39,8 +44,12 @@ class C3M(Base):
         self.name = "C3M"
         self.device = device
 
-        self.state_dim = u_func.state_dim
-        self.action_dim = u_func.action_dim
+        self.x_dim = x_dim
+        self.state_dim = state_dim
+        self.effective_x_dim = len(effective_indices)
+        self.effective_indices = effective_indices
+        self.action_dim = action_dim
+
         self.num_minibatch = num_minibatch
         self.minibatch_size = minibatch_size
 
@@ -59,9 +68,11 @@ class C3M(Base):
         self.eps = eps
         self.w_ub = w_ub
 
-        self.optimizers = torch.optim.Adam(
-            {"params": self.W_func.parameters(), "lr": lr},
-            {"params": self.u_func.parameters(), "lr": lr},
+        self.optimizer = torch.optim.Adam(
+            [
+                {"params": self.W_func.parameters(), "lr": W_lr},
+                {"params": self.u_func.parameters(), "lr": u_lr},
+            ]
         )
 
         #
@@ -76,7 +87,8 @@ class C3M(Base):
         self._forward_steps += 1
         state = torch.from_numpy(state).to(self._dtype).to(self.device)
 
-        a = self.u_func(state)
+        x, xref, uref, x_trim, xref_trim = self.trim_state(state)
+        a = self.u_func(x, xref, uref, x_trim, xref_trim)
 
         return a, {
             "probs": self.dummy,  # dummy for code consistency
@@ -100,6 +112,7 @@ class C3M(Base):
 
     def Jacobian(self, f, states):
         # NOTE that this function assume that data are independent of each other
+        print(f.shape, states.shape)
         f = f + 0.0 * states.sum()  # to avoid the case that f is independent of x
 
         n = states.shape[0]
@@ -159,6 +172,20 @@ class C3M(Base):
         else:
             return torch.tensor(0.0).type(z.type()).requires_grad_()
 
+    def trim_state(self, state: torch.Tensor):
+        if len(state.shape) == 1:
+            state = state.unsqueeze(0)
+
+        # state trimming
+        x = state[:, : self.x_dim]
+        xref = state[:, self.x_dim : -self.action_dim]
+        uref = state[:, -self.action_dim :]
+
+        x_trim = x[:, self.effective_indices]
+        xref_trim = xref[:, self.effective_indices]
+
+        return x, xref, uref, x_trim, xref_trim
+
     def learn(self, batch):
         """Performs a single training step using PPO, incorporating all reference training steps."""
         self.train()
@@ -174,22 +201,24 @@ class C3M(Base):
         terminals = to_tensor(batch["terminals"])
 
         #### COMPUTE INGREDIENTS ####
-        W = self.W_func(states)  # n, state_dim, state_dim
-        M = inverse(W)  # n, state_dim, state_dim
+        x, xref, uref, x_trim, xref_trim = self.trim_state(states)
 
-        f = self.f_func(states)  # n, state_dim
-        B = self.B_func(states)  # n, state_dim, action
+        W = self.W_func(x, xref, uref, x_trim, xref_trim)  # n, x_dim, x_dim
+        M = inverse(W)  # n, x_dim, x_dim
 
-        DfDx = self.Jacobian(f, states)  # n, f_dim, state_dim
-        DBDx = self.B_Jacobian(B, states)  # n, state_dim, state_dim, b_dim
-        Bbot = self.Bbot_func(states)  # n, state_dim, state - action dim
+        f = self.f_func(x)  # n, x_dim
+        B = self.B_func(x)  # n, x_dim, action
+
+        DfDx = self.Jacobian(f, x)  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
+        Bbot = self.Bbot_func(x)  # n, x_dim, state - action dim
 
         # since online we do not do below
         # u = u_func(x, x - xref, uref)  # u: bs x m x 1 # TODO: x - xref
-        K = self.Jacobian(actions, states)  # n, f_dim, state_dim
+        K = self.Jacobian(actions, x)  # n, f_dim, x_dim
 
         #  actions[:, i]: n, 1, 1
-        #  DBDx[:, :, :, i]: n, state_dim, state_dim
+        #  DBDx[:, :, :, i]: n, x_dim, x_dim
         A = DfDx + sum(
             [
                 actions[:, i].unsqueeze(-1).unsqueeze(-1) * DBDx[:, :, :, i]
@@ -242,7 +271,7 @@ class C3M(Base):
 
         loss = pd_loss + c1_loss + c2_loss + overshoot_loss
 
-        self.optimizers.zero_grad()
+        self.optimizer.zero_grad()
         loss.backward()
         grad_dict = self.compute_gradient_norm(
             [self.W_func, self.u_func],
@@ -250,7 +279,7 @@ class C3M(Base):
             dir="C3M",
             device=self.device,
         )
-        self.optimizers.step()
+        self.optimizer.step()
 
         # Logging
         loss_dict = {

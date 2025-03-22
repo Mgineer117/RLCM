@@ -44,12 +44,14 @@ class Trainer:
         writer: SummaryWriter,
         timesteps: int = 1e6,
         log_interval: int = 2,
+        eval_num: int = 10,
         eval_episodes: int = 10,
         seed: int = 0,
     ) -> None:
         self.env = env
         self.policy = policy
         self.sampler = sampler
+        self.eval_num = eval_num
         self.eval_episodes = eval_episodes
 
         self.logger = logger
@@ -127,11 +129,21 @@ class Trainer:
                     self.policy.eval()
                     eval_idx += 1
 
-                    eval_dict, traj_plot = self.evaluate()
+                    eval_dict_list = []
+                    for i in range(self.eval_num):
+                        eval_dict, traj_plot = self.evaluate()
+                        eval_dict_list.append(eval_dict)
+
+                    eval_dict = self.average_dict_values(eval_dict_list)
 
                     # Manual logging
                     self.write_log(eval_dict, step=step, eval_log=True)
-                    self.write_image(traj_plot, step=step, logdir=f"{self.policy.name}")
+                    self.write_image(
+                        traj_plot,
+                        step=step,
+                        logdir=f"{self.policy.name}",
+                        name="traj_plot",
+                    )
 
                     self.last_reward_mean.append(
                         eval_dict[f"{self.policy.name}/eval/rew_mean"]
@@ -159,20 +171,23 @@ class Trainer:
 
         # Set subplot parameters based on dimension
         subplot_kw = {"projection": "3d"} if dimension == 3 else {}
-        fig, ax = plt.subplots(subplot_kw=subplot_kw, figsize=(8, 6))
+        fig, (ax1, ax2) = plt.subplots(
+            nrows=1, ncols=2, subplot_kw=subplot_kw, figsize=(10, 6)
+        )
 
         # Dynamically create the coordinate list and plot the reference trajectory
         coords = [self.env.xref[:, i] for i in range(dimension)]
         first_point = [c[0] for c in coords]
-        ax.scatter(
+        ax1.scatter(
             *first_point,
             marker="*",
             alpha=0.7,
             c="black",
             s=80.0,
         )
-        ax.plot(*coords, linestyle="--", c="black", label="Reference")
+        ax1.plot(*coords, linestyle="--", c="black", label="Reference")
 
+        error_norm_trajs = []
         error_trajs = []
         tref_trajs = []
         ep_buffer = []
@@ -183,7 +198,9 @@ class Trainer:
             # Env initialization
             options = {"replace_x_0": True}
             obs, infos = self.env.reset(seed=self.seed, options=options)
+
             trajectory = [infos["x"][:dimension]]
+            error_norm_trajectory = [np.linalg.norm(self.env.xref[0] - infos["x"])]
             error_trajectory = [np.linalg.norm(self.env.xref[0] - infos["x"])]
             tref_trajectory = [self.env.time_steps]
 
@@ -196,6 +213,10 @@ class Trainer:
 
                 next_obs, rew, term, trunc, infos = self.env.step(a)
                 trajectory.append(infos["x"][:dimension])  # Store trajectory point
+                error_norm_trajectory.append(
+                    np.linalg.norm(self.env.xref[t] - infos["x"])
+                    / self.env.init_tracking_error
+                )
                 error_trajectory.append(np.linalg.norm(self.env.xref[t] - infos["x"]))
                 tref_trajectory.append(self.env.time_steps)
                 done = term or trunc
@@ -221,14 +242,14 @@ class Trainer:
                     trajectory = np.array(trajectory)
                     coords = [trajectory[:, i] for i in range(dimension)]
                     first_point = [c[0] for c in coords]
-                    ax.scatter(
+                    ax1.scatter(
                         *first_point,
                         marker="*",
                         alpha=0.7,
                         c=COLORS[str(num_episodes)],
                         s=80.0,
                     )
-                    ax.plot(
+                    ax1.plot(
                         *coords,
                         linestyle="-",
                         alpha=0.7,
@@ -236,18 +257,24 @@ class Trainer:
                         label=str(num_episodes),
                     )
 
+                    error_norm_trajs.append(error_norm_trajectory)
                     error_trajs.append(error_trajectory)
                     tref_trajs.append(tref_trajectory)
 
                     break
 
         # Optional: Add axis labels
-        ax.set_xlabel("X", labelpad=10)
-        ax.set_ylabel("Y", labelpad=10)
+        ax1.set_xlabel("X", labelpad=10)
+        ax1.set_ylabel("Y", labelpad=10)
         if dimension == 3:
-            ax.set_zlabel("Z", labelpad=10)
+            ax1.set_zlabel("Z", labelpad=10)
             # Set a nice viewing angle for 3D
-            ax.view_init(elev=25, azim=45)
+            ax1.view_init(elev=25, azim=45)
+
+        # calculate the mean and std of the traj norm error to make plot
+        for t, traj in zip(tref_trajs, error_norm_trajs):
+            ax2.plot(t, traj)
+
         plt.tight_layout()
 
         # Convert figure to a NumPy array
@@ -293,9 +320,9 @@ class Trainer:
         for key, value in logging_dict.items():
             self.writer.add_scalar(key, value, step)
 
-    def write_image(self, image: np.ndarray, step: int, logdir: str):
+    def write_image(self, image: np.ndarray, step: int, logdir: str, name: str):
         image_list = [image]
-        path_image_path = os.path.join(logdir, "traj_plot")
+        path_image_path = os.path.join(logdir, name)
         self.logger.write_images(step=step, images=image_list, logdir=path_image_path)
 
     def save_model(self, e):
@@ -336,8 +363,6 @@ class Trainer:
         avg_dict = {key: sum_val / len(dict_list) for key, sum_val in sum_dict.items()}
 
         return avg_dict
-
-    import numpy as np
 
     def compute_convergence_rate(self, tref_trajs, error_trajs, alpha=0.05):
         """

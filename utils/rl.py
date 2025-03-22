@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 from envs.car import CarEnv
@@ -91,12 +92,39 @@ def get_policy(env, args):
         from policy.layers.c3m_networks import C3M_W, C3M_U
 
         # this was not discussed in paper nut implemented by c3m author
-        effective_dim = args.effective_dim
-        f_func = env.f_func
-        B_func = env.b_func
 
-        W_func = C3M_W()
-        u_func = C3M_U()
-        policy = C3M(W_func=W_func, u_func=u_func)
+        effective_indices = np.arange(env.pos_dimension, env.num_dim_x)
+
+        W_func = C3M_W(
+            x_dim=env.num_dim_x,
+            state_dim=args.state_dim,
+            effective_indices=effective_indices,
+            action_dim=args.action_dim,
+            w_lb=args.w_lb,
+            task=args.task,
+        )
+        u_func = C3M_U(
+            x_dim=env.num_dim_x,
+            state_dim=args.state_dim,
+            effective_indices=effective_indices,
+            action_dim=args.action_dim,
+            task=args.task,
+        )
+        policy = C3M(
+            x_dim=env.num_dim_x,
+            state_dim=args.state_dim,
+            effective_indices=effective_indices,
+            action_dim=args.action_dim,
+            W_func=W_func,
+            u_func=u_func,
+            f_func=env.f_func,
+            B_func=env.B_func,
+            Bbot_func=env.Bbot_func,
+            W_lr=args.W_lr,
+            u_lr=args.u_lr,
+            lbd=args.lbd,
+            eps=args.eps,
+            w_ub=args.w_ub,
+        )
 
     return policy

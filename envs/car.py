@@ -47,7 +47,7 @@ class CarEnv(gym.Env):
         self.pos_dimension = 2
 
         self.tracking_scaler = 1.0
-        self.control_scaler = 1e-1
+        self.control_scaler = 0.0
 
         self.time_bound = 6.0
         self.dt = 0.03
@@ -58,12 +58,16 @@ class CarEnv(gym.Env):
         self.sigma = sigma
         self.d_up = 3 * sigma
 
+        self.Bbot_func = None
+
         self.observation_space = spaces.Box(
             low=STATE_MIN.flatten(), high=STATE_MAX.flatten(), dtype=np.float64
         )
         self.action_space = spaces.Box(
             low=UREF_MIN.flatten(), high=UREF_MAX.flatten(), dtype=np.float64
         )
+
+        self.effective_indices = []
 
     def f_func(self, x):
         if len(x.shape) == 1:
@@ -172,6 +176,8 @@ class CarEnv(gym.Env):
         reward = self.tracking_scaler / (tracking_error + 1) + self.control_scaler / (
             control_effort + 1
         )
+
+        reward = (self.time_steps / self.episode_len) * reward
 
         return reward, {
             "tracking_error": tracking_error,
