@@ -71,7 +71,12 @@ def read_weight(filename):
 Fa_model = read_weight("model/Fa_net_12_3_full_Lip16.pth")
 
 
-def Fa_func(z, vx, vy, vz):
+def Fa_func(x: torch.Tensor):
+    z = x[:, 2]
+    vx = x[:, 3]
+    vy = x[:, 4]
+    vz = x[:, 5]
+
     if next(Fa_model.parameters()).device != z.device:
         Fa_model.to(z.device)
     # use prediction from NN as ground truth
@@ -93,11 +98,8 @@ def Fa_func(z, vx, vy, vz):
 def Fa_func_np(x):
     if len(x.shape) == 1:
         x = x[np.newaxis, :]
-    z = torch.tensor(x[:, 2]).float().view(1, -1)
-    vx = torch.tensor(x[:, 3]).float().view(1, -1)
-    vy = torch.tensor(x[:, 4]).float().view(1, -1)
-    vz = torch.tensor(x[:, 5]).float().view(1, -1)
-    Fa = Fa_func(z, vx, vy, vz).numpy()
+    x = torch.tensor(x).float().view(1, -1)
+    Fa = Fa_func(x).numpy()
     return Fa
 
 
@@ -124,6 +126,9 @@ class NeuralLanderEnv(gym.Env):
         self.sigma = sigma
         self.d_up = 3 * sigma
 
+        self.effective_indices = np.arange(2, 6)
+        self.Bbot_func = None
+
         self.observation_space = spaces.Box(
             low=STATE_MIN.flatten(), high=STATE_MAX.flatten(), dtype=np.float64
         )
@@ -131,7 +136,7 @@ class NeuralLanderEnv(gym.Env):
             low=UREF_MIN.flatten(), high=UREF_MAX.flatten(), dtype=np.float64
         )
 
-    def f_func(self, x):
+    def f_func_np(self, x: np.ndarray):
         # x: bs x n x 1
         # f: bs x n x 1
         if len(x.shape) == 1:
@@ -151,12 +156,44 @@ class NeuralLanderEnv(gym.Env):
 
         return f.squeeze()
 
-    def B_func(self, x):
+    def f_func(self, x: torch.Tensor):
+        # x: bs x n x 1
+        # f: bs x n x 1
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        Fa = Fa_func(x)
+        x, y, z, vx, vy, vz = [x[:, i] for i in range(self.num_dim_x)]
+
+        f = torch.zeros((n, self.num_dim_x))
+        f[:, 0] = vx
+        f[:, 1] = vy
+        f[:, 2] = vz
+        f[:, 3] = Fa[:, 0] / mass
+        f[:, 4] = Fa[:, 1] / mass
+        f[:, 5] = Fa[:, 2] / mass - g
+
+        return f.squeeze()
+
+    def B_func_np(self, x: np.ndarray):
         if len(x.shape) == 1:
             x = x[np.newaxis, :]
         n = x.shape[0]
 
         B = np.zeros((n, self.num_dim_x, self.num_dim_control))
+
+        B[:, 3, 0] = 1
+        B[:, 4, 1] = 1
+        B[:, 5, 2] = 1
+        return B.squeeze()
+
+    def B_func(self, x: torch.Tensor):
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        B = torch.zeros((n, self.num_dim_x, self.num_dim_control))
 
         B[:, 3, 0] = 1
         B[:, 4, 1] = 1
@@ -196,8 +233,8 @@ class NeuralLanderEnv(gym.Env):
 
             x_t = xref[-1].copy()
 
-            f_x = self.f_func(x_t)
-            B_x = self.B_func(x_t)
+            f_x = self.f_func_np(x_t)
+            B_x = self.B_func_np(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -219,8 +256,8 @@ class NeuralLanderEnv(gym.Env):
     def dynamic_fn(self, action):
         self.time_steps += 1
 
-        f_x = self.f_func(self.x_t)
-        B_x = self.B_func(self.x_t)
+        f_x = self.f_func_np(self.x_t)
+        B_x = self.B_func_np(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()

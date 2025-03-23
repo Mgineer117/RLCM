@@ -207,9 +207,7 @@ class Trainer:
             for t in range(1, self.env.episode_len + 1):
                 with torch.no_grad():
                     a, _ = self.policy(obs, deterministic=True)
-                    a = a.cpu().numpy().squeeze()
-                    if a.shape == ():  # Ensure it's an array
-                        a = np.array([a.item()])
+                    a = a.cpu().numpy().squeeze(0) if a.shape[-1] > 1 else [a.item()]
 
                 next_obs, rew, term, trunc, infos = self.env.step(a)
                 trajectory.append(infos["x"][:dimension])  # Store trajectory point

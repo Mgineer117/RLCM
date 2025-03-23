@@ -1,4 +1,5 @@
 import os
+import torch
 import numpy as np
 import urllib.request
 import gymnasium as gym
@@ -63,6 +64,9 @@ class PvtolEnv(gym.Env):
         self.sigma = sigma
         self.d_up = 3 * sigma
 
+        self.Bbot_func = None
+        self.effective_indices = np.arange(2, 4)
+
         self.observation_space = spaces.Box(
             low=STATE_MIN.flatten(), high=STATE_MAX.flatten(), dtype=np.float64
         )
@@ -70,7 +74,7 @@ class PvtolEnv(gym.Env):
             low=UREF_MIN.flatten(), high=UREF_MAX.flatten(), dtype=np.float64
         )
 
-    def f_func(self, x):
+    def f_func_np(self, x):
         # x: bs x n x 1
         # f: bs x n x 1
         if len(x.shape) == 1:
@@ -87,12 +91,42 @@ class PvtolEnv(gym.Env):
         f[:, 5] = 0
         return f.squeeze()
 
-    def B_func(self, x):
+    def f_func(self, x):
+        # x: bs x n x 1
+        # f: bs x n x 1
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        p_x, p_z, phi, v_x, v_z, dot_phi = [x[:, i] for i in range(self.num_dim_x)]
+        f = torch.zeros((n, self.num_dim_x))
+        f[:, 0] = v_x * torch.cos(phi) - v_z * torch.sin(phi)
+        f[:, 1] = v_x * torch.sin(phi) + v_z * torch.cos(phi)
+        f[:, 2] = dot_phi
+        f[:, 3] = v_z * dot_phi - g * torch.sin(phi)
+        f[:, 4] = -v_x * dot_phi - g * torch.cos(phi)
+        f[:, 5] = 0
+        return f.squeeze()
+
+    def B_func_np(self, x):
         if len(x.shape) == 1:
             x = x[np.newaxis, :]
         n = x.shape[0]
 
         B = np.zeros((n, self.num_dim_x, self.num_dim_control))
+
+        B[:, 4, 0] = 1 / m
+        B[:, 4, 1] = 1 / m
+        B[:, 5, 0] = l / J
+        B[:, 5, 1] = -l / J
+        return B.squeeze()
+
+    def B_func(self, x):
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        B = torch.zeros((n, self.num_dim_x, self.num_dim_control))
 
         B[:, 4, 0] = 1 / m
         B[:, 4, 1] = 1 / m
@@ -131,8 +165,8 @@ class PvtolEnv(gym.Env):
 
             x_t = xref[-1].copy()
 
-            f_x = self.f_func(x_t)
-            B_x = self.B_func(x_t)
+            f_x = self.f_func_np(x_t)
+            B_x = self.B_func_np(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -154,8 +188,8 @@ class PvtolEnv(gym.Env):
     def dynamic_fn(self, action):
         self.time_steps += 1
 
-        f_x = self.f_func(self.x_t)
-        B_x = self.B_func(self.x_t)
+        f_x = self.f_func_np(self.x_t)
+        B_x = self.B_func_np(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()

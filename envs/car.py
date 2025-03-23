@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import torch
 import urllib.request
 import gymnasium as gym
 from gymnasium import spaces
@@ -58,6 +59,7 @@ class CarEnv(gym.Env):
         self.sigma = sigma
         self.d_up = 3 * sigma
 
+        self.effective_indices = np.arange(self.pos_dimension, self.num_dim_x)
         self.Bbot_func = None
 
         self.observation_space = spaces.Box(
@@ -69,7 +71,7 @@ class CarEnv(gym.Env):
 
         self.effective_indices = []
 
-    def f_func(self, x):
+    def f_func_np(self, x: np.ndarray):
         if len(x.shape) == 1:
             x = x[np.newaxis, :]
         n = x.shape[0]
@@ -80,7 +82,28 @@ class CarEnv(gym.Env):
         f[:, 1] = x[:, 3] * np.sin(x[:, 2])
         return f.squeeze()
 
-    def B_func(self, x):
+    def f_func(self, x: torch.Tensor):
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        f = torch.zeros((n, self.num_dim_x))
+
+        f[:, 0] = x[:, 3] * torch.cos(x[:, 2])
+        f[:, 1] = x[:, 3] * torch.sin(x[:, 2])
+        return f.squeeze()
+
+    def B_func(self, x: torch.Tensor):
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        B = torch.zeros((n, self.num_dim_x, self.num_dim_control))
+        B[:, 2, 0] = 1
+        B[:, 3, 1] = 1
+        return B.squeeze()
+
+    def B_func_np(self, x: np.ndarray):
         if len(x.shape) == 1:
             x = x[np.newaxis, :]
         n = x.shape[0]
@@ -116,8 +139,8 @@ class CarEnv(gym.Env):
 
             x_t = xref[-1].copy()
 
-            f_x = self.f_func(x_t)
-            B_x = self.B_func(x_t)
+            f_x = self.f_func_np(x_t)
+            B_x = self.B_func_np(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -139,8 +162,8 @@ class CarEnv(gym.Env):
     def dynamic_fn(self, action):
         self.time_steps += 1
 
-        f_x = self.f_func(self.x_t)
-        B_x = self.B_func(self.x_t)
+        f_x = self.f_func_np(self.x_t)
+        B_x = self.B_func_np(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()

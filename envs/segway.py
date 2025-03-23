@@ -1,4 +1,5 @@
 import os
+import torch
 import numpy as np
 import urllib.request
 import gymnasium as gym
@@ -59,6 +60,8 @@ class SegwayEnv(gym.Env):
         self.sigma = sigma
         self.d_up = 3 * sigma
 
+        self.effective_indices = np.arange(1, 4)
+
         self.observation_space = spaces.Box(
             low=STATE_MIN.flatten(), high=STATE_MAX.flatten(), dtype=np.float64
         )
@@ -66,7 +69,24 @@ class SegwayEnv(gym.Env):
             low=UREF_MIN.flatten(), high=UREF_MAX.flatten(), dtype=np.float64
         )
 
-    def f_func(self, x):
+    def Bbot_func(self, x: torch.Tensor):
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+
+        n = x.shape[0]
+
+        p, theta, v, omega = [x[:, i] for i in range(self.num_dim_x)]
+        Bbot = torch.zeros(
+            n, self.num_dim_x, self.num_dim_x - self.num_dim_control
+        ).type(x.type())
+
+        Bbot[:, 0, 0] = 1
+        Bbot[:, 1, 1] = 1
+        Bbot[:, 2, 2] = (9.3 * torch.cos(theta) + 38.6) / (torch.cos(theta) ** 2 - 24.7)
+        Bbot[:, 3, 2] = -(-1.8 * torch.cos(theta) - 10.9) / (torch.cos(theta) - 24.7)
+        return Bbot
+
+    def f_func_np(self, x: np.ndarray):
         # x: bs x n x 1
         # f: bs x n x 1
         if len(x.shape) == 1:
@@ -91,7 +111,32 @@ class SegwayEnv(gym.Env):
 
         return f.squeeze(0)
 
-    def B_func(self, x):
+    def f_func(self, x: torch.Tensor):
+        # x: bs x n x 1
+        # f: bs x n x 1
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        p, theta, v, omega = [x[:, i] for i in range(self.num_dim_x)]
+
+        f = torch.zeros((n, self.num_dim_x))
+        f[:, 0] = v
+        f[:, 1] = omega
+        f[:, 2] = (
+            torch.cos(theta) * (9.8 * torch.sin(theta) + 11.5 * v)
+            + 68.4 * v
+            - 1.2 * (omega**2) * torch.sin(theta)
+        ) / (torch.cos(theta) - 24.7)
+        f[:, 3] = (
+            -58.8 * v * torch.cos(theta)
+            - 243.5 * v
+            - torch.sin(theta) * (208.3 + (omega**2) * torch.cos(theta))
+        ) / (torch.cos(theta) ** 2 - 24.7)
+
+        return f.squeeze(0)
+
+    def B_func_np(self, x: np.ndarray):
         if len(x.shape) == 1:
             x = x[np.newaxis, :]
         n = x.shape[0]
@@ -102,6 +147,20 @@ class SegwayEnv(gym.Env):
 
         B[:, 2, 0] = (-1.8 * np.cos(theta) - 10.9) / (np.cos(theta) - 24.7)
         B[:, 3, 0] = (9.3 * np.cos(theta) + 38.6) / (np.cos(theta) ** 2 - 24.7)
+
+        return B.squeeze(0)
+
+    def B_func(self, x: torch.Tensor):
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        p, theta, v, omega = [x[:, i] for i in range(self.num_dim_x)]
+
+        B = torch.zeros((n, self.num_dim_x, self.num_dim_control))
+
+        B[:, 2, 0] = (-1.8 * torch.cos(theta) - 10.9) / (torch.cos(theta) - 24.7)
+        B[:, 3, 0] = (9.3 * torch.cos(theta) + 38.6) / (torch.cos(theta) ** 2 - 24.7)
 
         return B.squeeze(0)
 
@@ -137,8 +196,8 @@ class SegwayEnv(gym.Env):
 
             x_t = xref[-1].copy()
 
-            f_x = self.f_func(x_t)
-            B_x = self.B_func(x_t)
+            f_x = self.f_func_np(x_t)
+            B_x = self.B_func_np(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -160,8 +219,8 @@ class SegwayEnv(gym.Env):
     def dynamic_fn(self, action):
         self.time_steps += 1
 
-        f_x = self.f_func(self.x_t)
-        B_x = self.B_func(self.x_t)
+        f_x = self.f_func_np(self.x_t)
+        B_x = self.B_func_np(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()

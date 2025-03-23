@@ -92,8 +92,7 @@ def get_policy(env, args):
         from policy.layers.c3m_networks import C3M_W, C3M_U
 
         # this was not discussed in paper nut implemented by c3m author
-
-        effective_indices = np.arange(env.pos_dimension, env.num_dim_x)
+        effective_indices = env.effective_indices
 
         W_func = C3M_W(
             x_dim=env.num_dim_x,

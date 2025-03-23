@@ -1,4 +1,5 @@
 import os
+import torch
 import numpy as np
 import urllib.request
 import gymnasium as gym
@@ -84,6 +85,9 @@ class QuadRotorEnv(gym.Env):
         self.sigma = sigma
         self.d_up = 3 * sigma
 
+        self.effective_indices = np.arange(3, 9)
+        self.Bbot_func = None
+
         self.observation_space = spaces.Box(
             low=STATE_MIN.flatten(), high=STATE_MAX.flatten(), dtype=np.float64
         )
@@ -91,7 +95,7 @@ class QuadRotorEnv(gym.Env):
             low=UREF_MIN.flatten(), high=UREF_MAX.flatten(), dtype=np.float64
         )
 
-    def f_func(self, x):
+    def f_func_np(self, x):
         # x: bs x n x 1
         # f: bs x n x 1
         if len(x.shape) == 1:
@@ -114,12 +118,47 @@ class QuadRotorEnv(gym.Env):
 
         return f.squeeze()
 
-    def B_func(self, x):
+    def f_func(self, x):
+        # x: bs x n x 1
+        # f: bs x n x 1
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        x, y, z, vx, vy, vz, force, theta_x, theta_y = [
+            x[:, i] for i in range(self.num_dim_x)
+        ]
+        f = torch.zeros((n, self.num_dim_x))
+        f[:, 0] = vx
+        f[:, 1] = vy
+        f[:, 2] = vz
+        f[:, 3] = -force * torch.sin(theta_y)
+        f[:, 4] = force * torch.cos(theta_y) * torch.sin(theta_x)
+        f[:, 5] = g - force * torch.cos(theta_y) * torch.cos(theta_x)
+        f[:, 6] = 0
+        f[:, 7] = 0
+        f[:, 8] = 0
+
+        return f.squeeze()
+
+    def B_func_np(self, x):
         if len(x.shape) == 1:
             x = x[np.newaxis, :]
         n = x.shape[0]
 
         B = np.zeros((n, self.num_dim_x, self.num_dim_control))
+
+        B[:, 6, 0] = 1
+        B[:, 7, 1] = 1
+        B[:, 8, 2] = 1
+        return B.squeeze()
+
+    def B_func(self, x):
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+        n = x.shape[0]
+
+        B = torch.zeros((n, self.num_dim_x, self.num_dim_control))
 
         B[:, 6, 0] = 1
         B[:, 7, 1] = 1
@@ -159,8 +198,8 @@ class QuadRotorEnv(gym.Env):
 
             x_t = xref[-1].copy()
 
-            f_x = self.f_func(x_t)
-            B_x = self.B_func(x_t)
+            f_x = self.f_func_np(x_t)
+            B_x = self.B_func_np(x_t)
 
             x_t = x_t + self.dt * (f_x + np.matmul(B_x, u[:, np.newaxis]).squeeze())
 
@@ -182,8 +221,8 @@ class QuadRotorEnv(gym.Env):
     def dynamic_fn(self, action):
         self.time_steps += 1
 
-        f_x = self.f_func(self.x_t)
-        B_x = self.B_func(self.x_t)
+        f_x = self.f_func_np(self.x_t)
+        B_x = self.B_func_np(self.x_t)
 
         self.x_t = self.x_t + self.dt * (
             f_x + np.matmul(B_x, action[:, np.newaxis]).squeeze()

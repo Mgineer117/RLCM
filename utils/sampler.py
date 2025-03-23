@@ -238,7 +238,7 @@ class OnlineSampler(Base):
             for t in range(self.episode_len):
                 with torch.no_grad():
                     a, metaData = policy(obs, deterministic=deterministic)
-                    a = a.cpu().numpy().squeeze() if a.shape[-1] > 1 else [a.item()]
+                    a = a.cpu().numpy().squeeze(0) if a.shape[-1] > 1 else [a.item()]
 
                     # env stepping
                     next_obs, rew, term, trunc, infos = env.step(a)

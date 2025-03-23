@@ -8,7 +8,7 @@ from policy.layers.building_blocks import MLP
 
 
 def get_W_model(task, x_dim, effective_x_dim, action_dim):
-    if task == "car":
+    if task in ("car", "neurallander", "pvtol", "segway"):
         model_W = torch.nn.Sequential(
             torch.nn.Linear(effective_x_dim, 128, bias=True),
             torch.nn.Tanh(),
@@ -17,6 +17,21 @@ def get_W_model(task, x_dim, effective_x_dim, action_dim):
         model_Wbot = torch.nn.Sequential(
             torch.nn.Linear(
                 1,
+                128,
+                bias=True,
+            ),
+            torch.nn.Tanh(),
+            torch.nn.Linear(128, (x_dim - action_dim) ** 2, bias=False),
+        )
+    elif task == "quadrotor":
+        model_W = torch.nn.Sequential(
+            torch.nn.Linear(effective_x_dim, 128, bias=True),
+            torch.nn.Tanh(),
+            torch.nn.Linear(128, x_dim * x_dim, bias=False),
+        )
+        model_Wbot = torch.nn.Sequential(
+            torch.nn.Linear(
+                effective_x_dim - action_dim,
                 128,
                 bias=True,
             ),
@@ -89,25 +104,77 @@ class C3M_W(nn.Module):
             W = W + self.w_lb * torch.eye(self.x_dim).view(
                 1, self.x_dim, self.x_dim
             ).type(x_trim.type())
+        elif self.task == "neurallander":
+            n = x_trim.shape[0]
+
+            W = self.model_W(x_trim).view(n, self.x_dim, self.x_dim)
+            Wbot = self.model_Wbot(x[:, 2:3]).view(
+                n, self.x_dim - self.action_dim, self.x_dim - self.action_dim
+            )
+            W[
+                :,
+                : self.x_dim - self.action_dim,
+                : self.x_dim - self.action_dim,
+            ] = Wbot
+            W[
+                :,
+                self.x_dim - self.action_dim : :,
+                : self.x_dim - self.action_dim,
+            ] = 0
+
+            W = W.transpose(1, 2).matmul(W)
+            W = W + self.w_lb * torch.eye(self.x_dim).view(
+                1, self.x_dim, self.x_dim
+            ).type(x_trim.type())
+        elif self.task in ("pvtol", "segway"):
+            n = x_trim.shape[0]
+
+            W = self.model_W(x_trim).view(n, self.x_dim, self.x_dim)
+
+            W = W.transpose(1, 2).matmul(W)
+            W = W + self.w_lb * torch.eye(self.x_dim).view(
+                1, self.x_dim, self.x_dim
+            ).type(x_trim.type())
+        elif self.task == "quadrotor":
+            n = x_trim.shape[0]
+
+            W = self.model_W(x_trim).view(n, self.x_dim, self.x_dim)
+            Wbot = self.model_Wbot(
+                x[:, self.effective_indices[: -self.action_dim]]
+            ).view(n, self.x_dim - self.action_dim, self.x_dim - self.action_dim)
+            W[
+                :,
+                : self.x_dim - self.action_dim,
+                : self.x_dim - self.action_dim,
+            ] = Wbot
+            W[
+                :,
+                self.x_dim - self.action_dim : :,
+                : self.x_dim - self.action_dim,
+            ] = 0
+
+            W = W.transpose(1, 2).matmul(W)
+            W = W + self.w_lb * torch.eye(self.x_dim).view(
+                1, self.x_dim, self.x_dim
+            ).type(x_trim.type())
         return W
 
 
 def get_u_model(task, x_dim, effective_x_dim, action_dim):
-    if task == "car":
-        input_dim = 2 * effective_x_dim
-        c = 3 * x_dim
+    input_dim = 2 * effective_x_dim
+    c = 3 * x_dim
 
-        w1 = torch.nn.Sequential(
-            torch.nn.Linear(input_dim, 128, bias=True),
-            torch.nn.Tanh(),
-            torch.nn.Linear(128, c * x_dim, bias=True),
-        )
+    w1 = torch.nn.Sequential(
+        torch.nn.Linear(input_dim, 128, bias=True),
+        torch.nn.Tanh(),
+        torch.nn.Linear(128, c * x_dim, bias=True),
+    )
 
-        w2 = torch.nn.Sequential(
-            torch.nn.Linear(input_dim, 128, bias=True),
-            torch.nn.Tanh(),
-            torch.nn.Linear(128, c * action_dim, bias=True),
-        )
+    w2 = torch.nn.Sequential(
+        torch.nn.Linear(input_dim, 128, bias=True),
+        torch.nn.Tanh(),
+        torch.nn.Linear(128, c * action_dim, bias=True),
+    )
 
     return w1, w2
 
@@ -152,13 +219,13 @@ class C3M_U(nn.Module):
         n = x.shape[0]
 
         x_xref_trim = torch.cat((x_trim, xref_trim), axis=-1)
-        e = x - xref
+        e = (x - xref).unsqueeze(-1)
 
         w1 = self.w1(x_xref_trim).reshape(n, -1, self.x_dim)
         w2 = self.w2(x_xref_trim).reshape(n, self.action_dim, -1)
 
-        l1 = F.tanh(torch.matmul(w1, e.T))
+        l1 = F.tanh(torch.matmul(w1, e))
         l2 = torch.matmul(w2, l1).squeeze(-1)
 
         u = l2 + uref
-        return u.squeeze()
+        return u
