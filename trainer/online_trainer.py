@@ -59,8 +59,7 @@ class Trainer:
 
         # training parameters
         self.timesteps = timesteps
-        batch_size = self.policy.minibatch_size * self.policy.num_minibatch
-        self.nupdates = self.timesteps // batch_size
+        self.nupdates = self.policy.nupdates
 
         self.log_interval = log_interval
         self.eval_interval = int(self.timesteps / self.log_interval)
@@ -90,7 +89,9 @@ class Trainer:
 
         # Train loop
         eval_idx = 0
-        with tqdm(total=self.timesteps, desc=f"PPO Training (Timesteps)") as pbar:
+        with tqdm(
+            total=self.timesteps, desc=f"{self.policy.name} Training (Timesteps)"
+        ) as pbar:
             while pbar.n < self.timesteps:
                 step = pbar.n + 1  # + 1 to avoid zero division
 

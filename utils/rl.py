@@ -60,6 +60,7 @@ def call_env(args):
 
 def get_policy(env, args):
     algo_name = args.algo_name
+    nupdates = args.timesteps / (args.minibatch_size * args.num_minibatch)
 
     if algo_name == "ppo":
         from policy.ppo import PPO
@@ -85,6 +86,7 @@ def get_policy(env, args):
             gamma=args.gamma,
             gae=args.gae,
             K=args.K_epochs,
+            nupdates=nupdates,
             device=args.device,
         )
     elif algo_name == "c3m":
@@ -124,6 +126,7 @@ def get_policy(env, args):
             lbd=args.lbd,
             eps=args.eps,
             w_ub=args.w_ub,
+            nupdates=nupdates,
         )
 
     return policy

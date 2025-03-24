@@ -30,6 +30,7 @@ class PPO(Base):
         gamma: float = 0.99,
         gae: float = 0.9,
         K: int = 5,
+        nupdates: int = 0,
         device: str = "cpu",
     ):
         super(PPO, self).__init__()
@@ -49,6 +50,8 @@ class PPO(Base):
         self._K = K
         self._l2_reg = l2_reg
         self._target_kl = target_kl
+        self.nupdates = nupdates
+
         self._forward_steps = 0
 
         # trainable networks

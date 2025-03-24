@@ -36,6 +36,7 @@ class C3M(Base):
         w_ub: float = 1e-2,
         num_minibatch: int = 8,
         minibatch_size: int = 256,
+        nupdates: int = 0,
         device: str = "cpu",
     ):
         super(C3M, self).__init__()
@@ -54,6 +55,8 @@ class C3M(Base):
         self.minibatch_size = minibatch_size
 
         self._forward_steps = 0
+        self.nupdates = nupdates
+        self.current_update = 0
 
         # trainable networks
         self.W_func = W_func
@@ -145,12 +148,19 @@ class C3M(Base):
             DBDx[:, :, :, i] = self.Jacobian(B[:, :, i].unsqueeze(-1), x)
         return DBDx
 
-    def weighted_gradients(self, W: torch.Tensor, v: torch.Tensor, x: torch.Tensor):
+    def weighted_gradients(
+        self, W: torch.Tensor, v: torch.Tensor, x: torch.Tensor, detach: bool
+    ):
         # v, x: bs x n x 1
         # DWDx: bs x n x n x n
         assert v.size() == x.size()
         bs = x.shape[0]
-        return (self.Jacobian_Matrix(W, x) * v.view(bs, 1, 1, -1)).sum(dim=3)
+        if detach:
+            return (self.Jacobian_Matrix(W, x).detach() * v.view(bs, 1, 1, -1)).sum(
+                dim=3
+            )
+        else:
+            return (self.Jacobian_Matrix(W, x) * v.view(bs, 1, 1, -1)).sum(dim=3)
 
     def loss_pos_matrix_random_sampling(self, A: torch.Tensor):
         # A: n x d x d
@@ -175,12 +185,14 @@ class C3M(Base):
     def trim_state(self, state: torch.Tensor):
         if len(state.shape) == 1:
             state = state.unsqueeze(0)
-        state = state.requires_grad_()
 
         # state trimming
         x = state[:, : self.x_dim]
         xref = state[:, self.x_dim : -self.action_dim]
         uref = state[:, -self.action_dim :]
+
+        # require grad for x only
+        x = x.requires_grad_()
 
         x_trim = x[:, self.effective_indices]
         xref_trim = xref[:, self.effective_indices]
@@ -192,16 +204,25 @@ class C3M(Base):
         self.train()
         t0 = time.time()
 
+        if self.current_update >= int(0.3 * self.nupdates):
+            detach = False
+        else:
+            detach = True
+
         # Ingredients: Convert batch data to tensors
         def to_tensor(data):
             return torch.from_numpy(data).to(self._dtype).to(self.device)
 
         states = to_tensor(batch["states"])
         rewards = to_tensor(batch["rewards"])
+        n = rewards.shape[0]
 
         #### COMPUTE INGREDIENTS ####
         # grad tracking state elements
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
+
+        W = self.W_func(x, xref, uref, x_trim, xref_trim)  # n, x_dim, x_dim
+        M = inverse(W)  # n, x_dim, x_dim
 
         f = self.f_func(x)  # n, x_dim
         B = self.B_func(x)  # n, x_dim, action
@@ -222,32 +243,35 @@ class C3M(Base):
             ]
         )
 
-        W = self.W_func(x, xref, uref, x_trim, xref_trim)  # n, x_dim, x_dim
-        M = inverse(W)  # n, x_dim, x_dim
-
         dot_x = f + matmul(B, u.unsqueeze(-1)).squeeze(-1)
-        dot_M = self.weighted_gradients(M, dot_x, x)
-        dot_W = self.weighted_gradients(W, dot_x, x)
+        dot_M = self.weighted_gradients(M, dot_x, x, detach)
+        dot_W = self.weighted_gradients(W, dot_x, x, detach)
 
         # contraction condition
-        ABK = A + matmul(B, K)
-        MABK = matmul(M, ABK)
-        sym_MABK = MABK + transpose(MABK, 1, 2)
-        C_u = dot_M + sym_MABK + 2 * self.lbd * M
+        if detach:
+            ABK = A + matmul(B, K)
+            MABK = matmul(M.detach(), ABK)
+            sym_MABK = MABK + transpose(MABK, 1, 2)
+            C_u = dot_M + sym_MABK + 2 * self.lbd * M.detach()
+        else:
+            ABK = A + matmul(B, K)
+            MABK = matmul(M, ABK)
+            sym_MABK = MABK + transpose(MABK, 1, 2)
+            C_u = dot_M + sym_MABK + 2 * self.lbd * M
 
         # C1
-        DfW = self.weighted_gradients(W, f, x)
+        DfW = self.weighted_gradients(W, f, x, detach)
         DfDxW = matmul(DfDx, W)
         sym_DfDxW = DfDxW + transpose(DfDxW, 1, 2)
 
         # this has to be a negative definite matrix
-        C1_inner = -DfW + sym_DfDxW + 2 * self.lbd * M
+        C1_inner = -DfW + sym_DfDxW + 2 * self.lbd * W
         C1 = matmul(matmul(transpose(Bbot, 1, 2), C1_inner), Bbot)
 
         C2_inners = []
         C2s = []
         for j in range(self.action_dim):
-            DbW = self.weighted_gradients(W, B[:, :, j], x)
+            DbW = self.weighted_gradients(W, B[:, :, j], x, detach)
             DbDxW = matmul(DBDx[:, :, :, j], W)
             sym_DbDxW = DbDxW + transpose(DbDxW, 1, 2)
             C2_inner = DbW - sym_DbDxW
@@ -281,6 +305,15 @@ class C3M(Base):
         )
         self.optimizer.step()
 
+        C_eig, _ = torch.linalg.eig(C_u)
+        C1_eig, _ = torch.linalg.eig(C1)
+
+        C_eig = torch.real(C_eig)
+        C1_eig = torch.real(C1_eig)
+
+        C_eig_contraction = ((C_eig >= 0).sum(dim=-1) == 0).cpu().detach().numpy()
+        C1_eig_contraction = ((C1_eig >= 0).sum(dim=1) == 0).cpu().detach().numpy()
+
         # Logging
         loss_dict = {
             "C3M/loss/loss": loss.item(),
@@ -288,6 +321,8 @@ class C3M(Base):
             "C3M/loss/c1_loss": c1_loss.item(),
             "C3M/loss/c2_loss": c2_loss.item(),
             "C3M/loss/overshoot_loss": overshoot_loss.item(),
+            "C3M/analytics/C_eig_contraction": C_eig_contraction.mean(),
+            "C3M/analytics/C1_eig_contraction": C1_eig_contraction.mean(),
             "C3M/analytics/avg_rewards": torch.mean(rewards).item(),
         }
         norm_dict = self.compute_weight_norm(
@@ -302,6 +337,7 @@ class C3M(Base):
         # Cleanup
         del states, u, rewards
         self.eval()
+        self.current_update += 1
 
         timesteps = self.num_minibatch * self.minibatch_size
         update_time = time.time() - t0
