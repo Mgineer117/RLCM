@@ -197,9 +197,7 @@ class C3M(Base):
             return torch.from_numpy(data).to(self._dtype).to(self.device)
 
         states = to_tensor(batch["states"])
-        # actions = to_tensor(batch["actions"])  # n, action_dim
         rewards = to_tensor(batch["rewards"])
-        terminals = to_tensor(batch["terminals"])
 
         #### COMPUTE INGREDIENTS ####
         # grad tracking state elements
@@ -274,6 +272,7 @@ class C3M(Base):
 
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=10.0)
         grad_dict = self.compute_gradient_norm(
             [self.W_func, self.u_func],
             ["W_func", "u_func"],
@@ -301,7 +300,7 @@ class C3M(Base):
         loss_dict.update(norm_dict)
 
         # Cleanup
-        del states, u, rewards, terminals
+        del states, u, rewards
         self.eval()
 
         timesteps = self.num_minibatch * self.minibatch_size

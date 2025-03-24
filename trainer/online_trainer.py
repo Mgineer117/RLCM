@@ -59,7 +59,8 @@ class Trainer:
 
         # training parameters
         self.timesteps = timesteps
-        self.nupdates = self.timesteps // self.policy.minibatch_size
+        batch_size = self.policy.minibatch_size * self.policy.num_minibatch
+        self.nupdates = self.timesteps // batch_size
 
         self.log_interval = log_interval
         self.eval_interval = int(self.timesteps / self.log_interval)
@@ -170,10 +171,12 @@ class Trainer:
         assert dimension in [2, 3], "Dimension must be 2 or 3"
 
         # Set subplot parameters based on dimension
-        subplot_kw = {"projection": "3d"} if dimension == 3 else {}
-        fig, (ax1, ax2) = plt.subplots(
-            nrows=1, ncols=2, subplot_kw=subplot_kw, figsize=(10, 6)
-        )
+        if dimension == 3:
+            fig = plt.figure(figsize=(10, 6))
+            ax1 = fig.add_subplot(1, 2, 1, projection="3d")
+            ax2 = fig.add_subplot(1, 2, 2)  # 2D subplot
+        else:
+            fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(10, 6))
 
         # Dynamically create the coordinate list and plot the reference trajectory
         coords = [self.env.xref[:, i] for i in range(dimension)]
@@ -270,8 +273,17 @@ class Trainer:
             ax1.view_init(elev=25, azim=45)
 
         # calculate the mean and std of the traj norm error to make plot
+        i = 0
         for t, traj in zip(tref_trajs, error_norm_trajs):
-            ax2.plot(t, traj)
+            ax2.plot(
+                t,
+                traj,
+                alpha=0.7,
+                c=COLORS[str(i)],
+            )
+            i += 1
+        ax2.set_xlabel("Time Steps", labelpad=10)
+        ax2.set_ylabel(r"||x(t)-x^*(t)||_2 / ||x(t) - x^*(0)||_2", labelpad=10)
 
         plt.tight_layout()
 

@@ -26,7 +26,7 @@ def get_args():
     parser.add_argument(
         "--quality", type=str, default="expert", help="Name of the model."
     )
-    parser.add_argument("--algo-name", type=str, default="ppo", help="Disable cuda.")
+    parser.add_argument("--algo-name", type=str, default="c3m", help="Disable cuda.")
     parser.set_defaults(use_cuda=True)
     parser.add_argument("--seed", type=int, default=42, help="Batch size.")
     parser.add_argument(
