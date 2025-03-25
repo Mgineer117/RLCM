@@ -191,7 +191,7 @@ class Trainer:
         )
         ax1.plot(*coords, linestyle="--", c="black", label="Reference")
 
-        error_norm_trajs = []
+        # error_norm_trajs = []
         error_trajs = []
         tref_trajs = []
         ep_buffer = []
@@ -204,8 +204,11 @@ class Trainer:
             obs, infos = self.env.reset(seed=self.seed, options=options)
 
             trajectory = [infos["x"][:dimension]]
-            error_norm_trajectory = [np.linalg.norm(self.env.xref[0] - infos["x"])]
-            error_trajectory = [np.linalg.norm(self.env.xref[0] - infos["x"])]
+            # error_norm_trajectory = [np.linalg.norm(self.env.xref[0] - infos["x"])]
+            error_trajectory = [
+                np.linalg.norm(self.env.xref[0] - infos["x"])
+                / self.env.init_tracking_error
+            ]
             tref_trajectory = [self.env.time_steps]
 
             for t in range(1, self.env.episode_len + 1):
@@ -215,7 +218,7 @@ class Trainer:
 
                 next_obs, rew, term, trunc, infos = self.env.step(a)
                 trajectory.append(infos["x"][:dimension])  # Store trajectory point
-                error_norm_trajectory.append(
+                error_trajectory.append(
                     np.linalg.norm(self.env.xref[t] - infos["x"])
                     / self.env.init_tracking_error
                 )
@@ -259,7 +262,7 @@ class Trainer:
                         label=str(num_episodes),
                     )
 
-                    error_norm_trajs.append(error_norm_trajectory)
+                    # error_norm_trajs.append(error_norm_trajectory)
                     error_trajs.append(error_trajectory)
                     tref_trajs.append(tref_trajectory)
 
@@ -275,7 +278,7 @@ class Trainer:
 
         # calculate the mean and std of the traj norm error to make plot
         i = 0
-        for t, traj in zip(tref_trajs, error_norm_trajs):
+        for t, traj in zip(tref_trajs, error_trajs):
             ax2.plot(
                 t,
                 traj,

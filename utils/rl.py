@@ -124,9 +124,58 @@ def get_policy(env, args):
             W_lr=args.W_lr,
             u_lr=args.u_lr,
             lbd=args.lbd,
-            eps=args.eps,
+            eps_clip=args.eps_clip,
             w_ub=args.w_ub,
             nupdates=nupdates,
+            device=args.device,
+        )
+    elif algo_name == "mrl":
+        from policy.mrl import MRL
+        from policy.layers.mrl_networks import MRL_W, MRL_Actor, MRL_Critic
+
+        # this was not discussed in paper nut implemented by c3m author
+        effective_indices = env.effective_indices
+
+        W_func = MRL_W(
+            x_dim=env.num_dim_x,
+            state_dim=args.state_dim,
+            effective_indices=effective_indices,
+            action_dim=args.action_dim,
+            w_lb=args.w_lb,
+            task=args.task,
+        )
+
+        actor = MRL_Actor(
+            args.state_dim,
+            hidden_dim=args.actor_dim,
+            a_dim=args.action_dim,
+        )
+
+        critic = MRL_Critic(args.state_dim, hidden_dim=args.critic_dim)
+
+        policy = MRL(
+            x_dim=env.num_dim_x,
+            effective_indices=effective_indices,
+            W_func=W_func,
+            actor=actor,
+            critic=critic,
+            W_lr=args.W_lr,
+            actor_lr=args.actor_lr,
+            critic_lr=args.critic_lr,
+            num_minibatch=args.num_minibatch,
+            minibatch_size=args.minibatch_size,
+            w_ub=args.w_ub,
+            lbd=args.lbd,
+            eps=args.eps,
+            eps_clip=args.eps_clip,
+            entropy_scaler=args.entropy_scaler,
+            target_kl=args.target_kl,
+            gamma=args.gamma,
+            gae=args.gae,
+            K=args.K_epochs,
+            nupdates=nupdates,
+            dt=env.dt,
+            device=args.device,
         )
 
     return policy

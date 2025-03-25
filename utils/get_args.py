@@ -26,7 +26,7 @@ def get_args():
     parser.add_argument(
         "--quality", type=str, default="expert", help="Name of the model."
     )
-    parser.add_argument("--algo-name", type=str, default="ppo", help="Disable cuda.")
+    parser.add_argument("--algo-name", type=str, default="mrl", help="Disable cuda.")
     parser.set_defaults(use_cuda=True)
     parser.add_argument("--seed", type=int, default=42, help="Batch size.")
     parser.add_argument(
@@ -42,6 +42,9 @@ def get_args():
     parser.add_argument("--u-lr", type=float, default=None, help="Base learning rate.")
     parser.add_argument("--w-ub", type=float, default=None, help="Base learning rate.")
     parser.add_argument("--w-lb", type=float, default=None, help="Base learning rate.")
+    parser.add_argument(
+        "--eps-clip", type=float, default=None, help="Base learning rate."
+    )
     parser.add_argument("--eps", type=float, default=None, help="Base learning rate.")
     parser.add_argument("--lbd", type=float, default=None, help="Base learning rate.")
     parser.add_argument(

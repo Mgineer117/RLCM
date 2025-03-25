@@ -69,8 +69,6 @@ class CarEnv(gym.Env):
             low=UREF_MIN.flatten(), high=UREF_MAX.flatten(), dtype=np.float64
         )
 
-        self.effective_indices = []
-
     def f_func_np(self, x: np.ndarray):
         if len(x.shape) == 1:
             x = x[np.newaxis, :]
