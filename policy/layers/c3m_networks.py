@@ -215,6 +215,7 @@ class C3M_U(nn.Module):
         uref: torch.Tensor,
         x_trim: torch.Tensor,
         xref_trim: torch.Tensor,
+        deterministic: bool = False,
     ):
         n = x.shape[0]
 

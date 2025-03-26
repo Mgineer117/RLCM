@@ -48,6 +48,15 @@ def get_args():
     parser.add_argument("--eps", type=float, default=None, help="Base learning rate.")
     parser.add_argument("--lbd", type=float, default=None, help="Base learning rate.")
     parser.add_argument(
+        "--numerical-ord", type=float, default=None, help="Base learning rate."
+    )
+    parser.add_argument(
+        "--M-scheme", type=str, default=None, help="Base learning rate."
+    )
+    parser.add_argument(
+        "--ABK-scheme", type=str, default=None, help="Base learning rate."
+    )
+    parser.add_argument(
         "--actor-dim", type=list, default=None, help="Base learning rate."
     )
     parser.add_argument(

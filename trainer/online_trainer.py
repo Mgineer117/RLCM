@@ -99,6 +99,7 @@ class Trainer:
                 batch, sample_time = self.sampler.collect_samples(
                     env=self.env, policy=self.policy, seed=self.seed
                 )
+
                 loss_dict, ppo_timesteps, update_time = self.policy.learn(batch)
 
                 # Calculate expected remaining time
@@ -222,7 +223,6 @@ class Trainer:
                     np.linalg.norm(self.env.xref[t] - infos["x"])
                     / self.env.init_tracking_error
                 )
-                error_trajectory.append(np.linalg.norm(self.env.xref[t] - infos["x"]))
                 tref_trajectory.append(self.env.time_steps)
                 done = term or trunc
 

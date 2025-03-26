@@ -224,12 +224,12 @@ class C3M(Base):
         W = self.W_func(x, xref, uref, x_trim, xref_trim)  # n, x_dim, x_dim
         M = inverse(W)  # n, x_dim, x_dim
 
-        f = self.f_func(x)  # n, x_dim
-        B = self.B_func(x)  # n, x_dim, action
+        f = self.f_func(x).to(self.device)  # n, x_dim
+        B = self.B_func(x).to(self.device)  # n, x_dim, action
 
         DfDx = self.Jacobian(f, x)  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
-        Bbot = self.Bbot_func(x)  # n, x_dim, state - action dim
+        Bbot = self.Bbot_func(x).to(self.device)  # n, x_dim, state - action dim
 
         # since online we do not do below
         u = self.u_func(x, xref, uref, x_trim, xref_trim)
@@ -314,6 +314,11 @@ class C3M(Base):
         C_eig_contraction = ((C_eig >= 0).sum(dim=-1) == 0).cpu().detach().numpy()
         C1_eig_contraction = ((C1_eig >= 0).sum(dim=1) == 0).cpu().detach().numpy()
 
+        with torch.no_grad():
+            dot_M_norm = torch.linalg.norm(dot_M)
+            sym_MABK_norm = torch.linalg.norm(sym_MABK)
+            M_norm = torch.linalg.norm(M)
+
         # Logging
         loss_dict = {
             "C3M/loss/loss": loss.item(),
@@ -324,6 +329,9 @@ class C3M(Base):
             "C3M/analytics/C_eig_contraction": C_eig_contraction.mean(),
             "C3M/analytics/C1_eig_contraction": C1_eig_contraction.mean(),
             "C3M/analytics/avg_rewards": torch.mean(rewards).item(),
+            "C3M/analytics/dot_M_norm": dot_M_norm.item(),
+            "C3M/analytics/sym_MABK_norm": sym_MABK_norm.item(),
+            "C3M/analytics/M_norm": M_norm.item(),
         }
         norm_dict = self.compute_weight_norm(
             [self.W_func, self.u_func],
