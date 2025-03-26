@@ -253,7 +253,7 @@ class MRL_Actor(nn.Module):
 
         u = a + uref
 
-        return a, {
+        return u, {
             "dist": dist,
             "probs": probs,
             "logprobs": logprobs,

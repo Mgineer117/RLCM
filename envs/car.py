@@ -48,7 +48,7 @@ class CarEnv(gym.Env):
         self.pos_dimension = 2
 
         self.tracking_scaler = 1.0
-        self.control_scaler = 0.0
+        self.control_scaler = 1e-1
 
         self.time_bound = 6.0
         self.dt = 0.03
