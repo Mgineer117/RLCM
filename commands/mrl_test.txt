@@ -1,7 +1,7 @@
-nohup python3 main.py --task car --project MRL-TEST --algo-name mrl --sigma 0.0 &
-nohup python3 main.py --task car --project MRL-TEST  --algo-name mrl --sigma 0.1 &
-nohup python3 main.py --task car --project MRL-TEST  --algo-name mrl --sigma 0.3 &
+nohup python3 main.py --task pvtol --project MRL-TEST --algo-name mrl --sigma 0.0 &
+nohup python3 main.py --task pvtol --project MRL-TEST  --algo-name mrl --sigma 0.1 &
+nohup python3 main.py --task pvtol --project MRL-TEST  --algo-name mrl --sigma 0.3 &
 
-nohup python3 main.py --task car --project MRL-TEST --algo-name ppo --sigma 0.0 &
-nohup python3 main.py --task car --project MRL-TEST  --algo-name ppo --sigma 0.1 &
-nohup python3 main.py --task car --project MRL-TEST  --algo-name ppo --sigma 0.3 &
+nohup python3 main.py --task pvtol --project MRL-TEST --algo-name ppo --sigma 0.0 &
+nohup python3 main.py --task pvtol --project MRL-TEST  --algo-name ppo --sigma 0.1 &
+nohup python3 main.py --task pvtol --project MRL-TEST  --algo-name ppo --sigma 0.3 &

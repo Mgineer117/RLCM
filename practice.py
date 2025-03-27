@@ -1,78 +1,76 @@
 import torch
 
 
-def compute_samplewise_ABK(x: torch.Tensor, dot_x: torch.Tensor) -> torch.Tensor:
+def compute_B_perp_batch(BK, u_dim, method="svd", threshold=1e-5):
     """
-    Compute a local estimate of the Jacobian (A+BK) at each sample by performing
-    a local regression using neighboring states.
+    Compute the nullspace basis B_perp for each sample in the batch from BK,
+    using either SVD or QR decomposition, and return a tensor of shape
+    (batch, x_dim, u_dim). For each sample, the columns of B_perp correspond
+    to an orthonormal basis of the nullspace of BK, padded (with zeros) or truncated
+    to have u_dim columns.
 
     Parameters:
-      x: Tensor of shape (T, n) representing T time steps (or samples) of the state.
-      dot_x: Tensor of shape (T, n) representing the corresponding time derivative
-             approximations at each sample.
+      BK: Tensor of shape (batch, x_dim, x_dim), the estimated BK for each sample.
+      u_dim: The control dimension, i.e. the desired number of nullspace vectors.
+      method: String, either "svd" or "qr" to select the decomposition method.
+      threshold: Threshold below which singular (or R diagonal) values are considered zero.
 
     Returns:
-      ABK_local: Tensor of shape (T, n, n) where each slice ABK_local[i] is the estimated
-                 Jacobian at sample i.
+      B_perp_tensor: Tensor of shape (batch, x_dim, u_dim).
     """
-    T, n = x.shape
-    ABK_local = torch.zeros(T, n, n, device=x.device, dtype=x.dtype)
+    batch_size, x_dim, _ = BK.shape
+    B_perp_list = []
 
-    for i in range(T):
-        # Collect indices of neighboring samples
-        neighbor_indices = []
-        if i - 1 >= 0:
-            neighbor_indices.append(i - 1)
-        if i + 1 < T:
-            neighbor_indices.append(i + 1)
-
-        # If we don't have any neighbors, we cannot estimate a local Jacobian
-        if len(neighbor_indices) == 0:
-            ABK_local[i] = torch.zeros(n, n, device=x.device, dtype=x.dtype)
-            continue
-
-        # Form the local differences relative to sample i.
-        # We use differences both in state and in the approximate derivative.
-        local_delta_x = []
-        local_delta_dot = []
-        for j in neighbor_indices:
-            local_delta_x.append((x[j] - x[i]).unsqueeze(0))  # shape (1, n)
-            local_delta_dot.append((dot_x[j] - dot_x[i]).unsqueeze(0))  # shape (1, n)
-
-        # Stack the local differences: X_local shape (k, n) and Y_local shape (k, n),
-        # where k is the number of neighbors (typically 2).
-        X_local = torch.cat(local_delta_x, dim=0)
-        Y_local = torch.cat(local_delta_dot, dim=0)
-
-        # Solve for the local Jacobian J_i such that: X_local @ J_i ≈ Y_local.
-        # If there are enough neighbors (k >= n), we use lstsq. Otherwise, we fall back to a pseudo-inverse.
-        if X_local.shape[0] >= n:
-            J_local, res, rank, s = torch.linalg.lstsq(X_local, Y_local, rcond=None)
+    for i in range(batch_size):
+        BK_i = BK[i]  # shape: (x_dim, x_dim)
+        if method.lower() == "svd":
+            # Use SVD: BK_i = U Sigma V^T.
+            U, S, _ = torch.linalg.svd(BK_i)
+            # Nullspace: columns of U corresponding to singular values < threshold.
+            null_indices = (S < threshold).nonzero(as_tuple=True)[0]
+            if null_indices.numel() > 0:
+                B_perp_i = U[
+                    :, null_indices
+                ]  # shape: (x_dim, m) where m is number of null directions.
+            else:
+                B_perp_i = torch.empty(x_dim, 0, device=BK.device, dtype=BK.dtype)
+        elif method.lower() == "qr":
+            # Use QR on the transpose: compute QR of BK_i^T = Q R.
+            Q, R = torch.linalg.qr(BK_i.T)  # Q: (x_dim, x_dim), R: (x_dim, x_dim)
+            # Check the absolute values of the diagonal of R.
+            diag_R = torch.abs(torch.diag(R))
+            null_indices = (diag_R < threshold).nonzero(as_tuple=True)[0]
+            if null_indices.numel() > 0:
+                B_perp_i = Q[
+                    :, null_indices
+                ]  # Q's columns corresponding to near-zero diag elements.
+            else:
+                B_perp_i = torch.empty(x_dim, 0, device=BK.device, dtype=BK.dtype)
         else:
-            J_local = torch.linalg.pinv(X_local) @ Y_local
+            raise ValueError("Method must be either 'svd' or 'qr'.")
 
-        ABK_local[i] = J_local
+        # Now, B_perp_i is of shape (x_dim, m). We want output of shape (x_dim, u_dim).
+        # Create a zero matrix of shape (x_dim, u_dim) and fill in as many columns as available.
+        padded = torch.zeros(x_dim, u_dim, device=BK.device, dtype=BK.dtype)
+        m = B_perp_i.shape[1]
+        if m > 0:
+            if m >= u_dim:
+                padded[:, :] = B_perp_i[:, :u_dim]
+            else:
+                padded[:, :m] = B_perp_i
+        B_perp_list.append(padded)
 
-    return ABK_local
+    B_perp_tensor = torch.stack(B_perp_list, dim=0)  # shape: (batch, x_dim, u_dim)
+    return B_perp_tensor
 
 
 # Example usage:
-if __name__ == "__main__":
-    # Generate a synthetic trajectory:
-    T, n = 50, 4
-    dt = 0.01
-    # Suppose x follows some dynamics; here we'll simulate with a linear system for example.
-    true_J = torch.randn(n, n)
-    x = torch.zeros(T, n)
-    x[0] = torch.randn(n)
-    for i in range(1, T):
-        x[i] = x[i - 1] + dt * (x[i - 1] @ true_J.T)
-
-    # Compute dot_x using a simple first-order forward difference.
-    dot_x = torch.zeros_like(x)
-    dot_x[:-1] = (x[1:] - x[:-1]) / dt
-    dot_x[-1] = dot_x[-2]  # approximate last derivative
-
-    # Estimate sample-wise ABK:
-    ABK_local = compute_samplewise_ABK(x, dot_x)
-    print("Estimated sample-wise A+BK shape:", ABK_local.shape)
+batch_size = 5
+x_dim = 6
+u_dim = 2
+BK = torch.randn(batch_size, x_dim, x_dim)
+B_perp_svd = compute_B_perp_batch(BK, u_dim, method="svd", threshold=1e-5)
+B_perp_qr = compute_B_perp_batch(BK, u_dim, method="qr", threshold=1e-5)
+print("B_perp (SVD) shape:", B_perp_svd.shape)
+print("B_perp (QR) shape:", B_perp_qr.shape)
+print("Error:", torch.linalg.matrix_norm(B_perp_svd - B_perp_qr).mean())

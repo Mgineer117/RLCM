@@ -326,7 +326,7 @@ class NeuralLanderEnv(gym.Env):
 
     def step(self, action):
         # policy output ranges [-1, 1]
-        # action = self.uref[self.time_steps] + action
+        action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)

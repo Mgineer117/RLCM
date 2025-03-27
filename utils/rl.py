@@ -62,18 +62,33 @@ def get_policy(env, args):
     algo_name = args.algo_name
     nupdates = args.timesteps / (args.minibatch_size * args.num_minibatch)
 
-    if algo_name == "ppo":
-        from policy.ppo import PPO
-        from policy.layers.ppo_networks import PPO_Actor, PPO_Critic
+    # this was not discussed in paper nut implemented by c3m author
+    effective_indices = env.effective_indices
 
-        actor = PPO_Actor(
-            args.state_dim,
-            hidden_dim=args.actor_dim,
-            a_dim=args.action_dim,
-        )
+    if algo_name in ("ppo", "ppo-manual"):
+        from policy.ppo import PPO
+        from policy.layers.ppo_networks import Manual_PPO_Actor, PPO_Actor, PPO_Critic
+
+        if algo_name == "ppo":
+            actor = PPO_Actor(
+                x_dim=env.num_dim_x,
+                effective_indices=effective_indices,
+                action_dim=args.action_dim,
+                task=args.task,
+            )
+        else:
+            actor = Manual_PPO_Actor(
+                x_dim=env.num_dim_x,
+                effective_indices=effective_indices,
+                action_dim=args.action_dim,
+                task=args.task,
+            )
+
         critic = PPO_Critic(args.state_dim, hidden_dim=args.critic_dim)
 
         policy = PPO(
+            x_dim=env.num_dim_x,
+            effective_indices=effective_indices,
             actor=actor,
             critic=critic,
             actor_lr=args.actor_lr,
@@ -89,12 +104,10 @@ def get_policy(env, args):
             nupdates=nupdates,
             device=args.device,
         )
+
     elif algo_name == "c3m":
         from policy.c3m import C3M
         from policy.layers.c3m_networks import C3M_W, C3M_U
-
-        # this was not discussed in paper nut implemented by c3m author
-        effective_indices = env.effective_indices
 
         W_func = C3M_W(
             x_dim=env.num_dim_x,
@@ -129,15 +142,13 @@ def get_policy(env, args):
             nupdates=nupdates,
             device=args.device,
         )
-    elif algo_name == "mrl":
+    elif algo_name in ("mrl", "mrl-manual"):
         from policy.mrl import MRL
-        from policy.layers.mrl_networks import MRL_W, MRL_Actor, MRL_Critic
-        from policy.layers.c3m_networks import C3M_W, C3M_U
+        from policy.layers.c3m_networks import C3M_W
+        from policy.layers.ppo_networks import Manual_PPO_Actor, PPO_Actor, PPO_Critic
 
         # this was not discussed in paper nut implemented by c3m author
-        effective_indices = env.effective_indices
-
-        W_func = MRL_W(
+        W_func = C3M_W(
             x_dim=env.num_dim_x,
             state_dim=args.state_dim,
             effective_indices=effective_indices,
@@ -146,22 +157,21 @@ def get_policy(env, args):
             task=args.task,
         )
 
-        # actor = C3M_U(
-        #     x_dim=env.num_dim_x,
-        #     state_dim=args.state_dim,
-        #     effective_indices=effective_indices,
-        #     action_dim=args.action_dim,
-        #     task=args.task,
-        # )
+        if algo_name == "mrl":
+            actor = PPO_Actor(
+                args.state_dim,
+                hidden_dim=args.actor_dim,
+                a_dim=args.action_dim,
+            )
+        else:
+            actor = Manual_PPO_Actor(
+                x_dim=env.num_dim_x,
+                effective_indices=effective_indices,
+                action_dim=args.action_dim,
+                task=args.task,
+            )
 
-        actor = MRL_Actor(
-            x_dim=env.num_dim_x,
-            effective_indices=effective_indices,
-            action_dim=args.action_dim,
-            task=args.task,
-        )
-
-        critic = MRL_Critic(args.state_dim, hidden_dim=args.critic_dim)
+        critic = PPO_Critic(args.state_dim, hidden_dim=args.critic_dim)
 
         policy = MRL(
             x_dim=env.num_dim_x,
@@ -188,6 +198,69 @@ def get_policy(env, args):
             K=args.K_epochs,
             nupdates=nupdates,
             dt=env.dt,
+            device=args.device,
+        )
+    elif algo_name in ("mrl-approx", "mrl-approx-manual"):
+        from policy.mrl_approx import MRL_Approximation
+        from policy.layers.c3m_networks import C3M_W
+        from policy.layers.ppo_networks import Manual_PPO_Actor, PPO_Actor, PPO_Critic
+
+        # this was not discussed in paper nut implemented by c3m author
+        effective_indices = env.effective_indices
+
+        W_func = C3M_W(
+            x_dim=env.num_dim_x,
+            state_dim=args.state_dim,
+            effective_indices=effective_indices,
+            action_dim=args.action_dim,
+            w_lb=args.w_lb,
+            task=args.task,
+        )
+
+        if algo_name == "mrl-approx":
+            actor = PPO_Actor(
+                args.state_dim,
+                hidden_dim=args.actor_dim,
+                a_dim=args.action_dim,
+            )
+        else:
+            actor = Manual_PPO_Actor(
+                x_dim=env.num_dim_x,
+                effective_indices=effective_indices,
+                action_dim=args.action_dim,
+                task=args.task,
+            )
+
+        critic = PPO_Critic(args.state_dim, hidden_dim=args.critic_dim)
+
+        policy = MRL_Approximation(
+            x_dim=env.num_dim_x,
+            effective_indices=effective_indices,
+            W_func=W_func,
+            f_func=env.f_func,
+            B_func=env.B_func,
+            Bbot_func=env.Bbot_func,
+            actor=actor,
+            critic=critic,
+            W_lr=args.W_lr,
+            actor_lr=args.actor_lr,
+            critic_lr=args.critic_lr,
+            num_minibatch=args.num_minibatch,
+            minibatch_size=args.minibatch_size,
+            w_ub=args.w_ub,
+            lbd=args.lbd,
+            eps=args.eps,
+            eps_clip=args.eps_clip,
+            entropy_scaler=args.entropy_scaler,
+            target_kl=args.target_kl,
+            gamma=args.gamma,
+            gae=args.gae,
+            K=args.K_epochs,
+            nupdates=nupdates,
+            dt=env.dt,
+            numerical_ord=args.numerical_ord,
+            M_scheme=args.M_scheme,
+            ABK_scheme=args.ABK_scheme,
             device=args.device,
         )
 

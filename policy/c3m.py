@@ -93,7 +93,9 @@ class C3M(Base):
         x, xref, uref, x_trim, xref_trim = self.trim_state(state)
         a = self.u_func(x, xref, uref, x_trim, xref_trim)
 
-        return a, {
+        u = a + uref
+
+        return u, {
             "probs": self.dummy,  # dummy for code consistency
             "logprobs": self.dummy,
             "entropy": self.dummy,

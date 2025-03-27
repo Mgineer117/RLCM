@@ -20,7 +20,7 @@
         128
     ],
     "num_minibatch": 4,
-    "minibatch_size": 2048,
+    "minibatch_size": 256,
     "entropy_scaler": 1e-2,
     "eval_episodes": 10,
     "sigma": 0.0,

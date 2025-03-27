@@ -3,7 +3,10 @@ import os
 import pickle
 import torch
 import torch.nn as nn
+from torch.autograd import grad
+from torch import matmul, inverse, transpose
 import numpy as np
+from typing import Callable
 
 # from utils.torch import get_flat_grad_from, get_flat_params_from, set_flat_params_to
 from utils.rl import estimate_advantages
@@ -17,6 +20,8 @@ from policy.base import Base
 class PPO(Base):
     def __init__(
         self,
+        x_dim: int,
+        effective_indices: list,
         actor: nn.Module,
         critic: nn.Module,
         actor_lr: float = 3e-4,
@@ -39,20 +44,23 @@ class PPO(Base):
         self.name = "PPO"
         self.device = device
 
+        self.x_dim = x_dim
         self.action_dim = actor.action_dim
+        self.effective_x_dim = len(effective_indices)
+        self.effective_indices = effective_indices
 
         self.num_minibatch = num_minibatch
         self.minibatch_size = minibatch_size
         self._entropy_scaler = entropy_scaler
-        self._eps_clip = eps_clip
-        self._gamma = gamma
-        self._gae = gae
-        self._K = K
-        self._l2_reg = l2_reg
-        self._target_kl = target_kl
-        self.nupdates = nupdates
+        self.gamma = gamma
+        self.gae = gae
+        self.K = K
+        self.l2_reg = l2_reg
+        self.target_kl = target_kl
+        self.eps_clip = eps_clip
 
         self._forward_steps = 0
+        self.nupdates = nupdates
 
         # trainable networks
         self.actor = actor
@@ -106,8 +114,8 @@ class PPO(Base):
                 rewards,
                 terminals,
                 values,
-                gamma=self._gamma,
-                gae=self._gae,
+                gamma=self.gamma,
+                gae=self.gae,
                 device=self.device,
             )
 
@@ -124,7 +132,7 @@ class PPO(Base):
         target_kl = []
         grad_dicts = []
 
-        for k in range(self._K):
+        for k in range(self.K):
             for n in range(self.num_minibatch):
                 indices = torch.randperm(batch_size)[: self.minibatch_size]
                 mb_states, mb_actions = states[indices], actions[indices]
@@ -141,7 +149,7 @@ class PPO(Base):
                 value_loss = self.mse_loss(mb_values, mb_returns)
                 l2_reg = (
                     sum(param.pow(2).sum() for param in self.critic.parameters())
-                    * self._l2_reg
+                    * self.l2_reg
                 )
                 value_loss += l2_reg
 
@@ -156,7 +164,7 @@ class PPO(Base):
 
                 surr1 = ratios * mb_advantages
                 surr2 = (
-                    torch.clamp(ratios, 1 - self._eps_clip, 1 + self._eps_clip)
+                    torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip)
                     * mb_advantages
                 )
                 actor_loss = -torch.min(surr1, surr2).mean()
@@ -172,14 +180,14 @@ class PPO(Base):
 
                 # Compute clip fraction (for logging)
                 clip_fraction = torch.mean(
-                    (torch.abs(ratios - 1) > self._eps_clip).float()
+                    (torch.abs(ratios - 1) > self.eps_clip).float()
                 ).item()
                 clip_fractions.append(clip_fraction)
 
                 # Check if KL divergence exceeds target KL for early stopping
                 kl_div = torch.mean(mb_old_logprobs - logprobs)
                 target_kl.append(kl_div.item())
-                if kl_div.item() > self._target_kl:
+                if kl_div.item() > self.target_kl:
                     break
 
                 # Update critic parameters
@@ -189,31 +197,31 @@ class PPO(Base):
                 grad_dict = self.compute_gradient_norm(
                     [self.actor, self.critic],
                     ["actor", "critic"],
-                    dir="PPO",
+                    dir=f"{self.name}",
                     device=self.device,
                 )
                 grad_dicts.append(grad_dict)
                 self.optimizer.step()
 
-            if kl_div.item() > self._target_kl:
+            if kl_div.item() > self.target_kl:
                 break
 
         # Logging
         loss_dict = {
-            "PPO/loss/loss": np.mean(losses),
-            "PPO/loss/actor_loss": np.mean(actor_losses),
-            "PPO/loss/value_loss": np.mean(value_losses),
-            "PPO/loss/entropy_loss": np.mean(entropy_losses),
-            "PPO/analytics/clip_fraction": np.mean(clip_fractions),
-            "PPO/analytics/klDivergence": target_kl[-1],
-            "PPO/analytics/K-epoch": k + 1,
-            "PPO/analytics/avg_rewards": torch.mean(rewards).item(),
+            f"{self.name}/loss/loss": np.mean(losses),
+            f"{self.name}/loss/actor_loss": np.mean(actor_losses),
+            f"{self.name}/loss/value_loss": np.mean(value_losses),
+            f"{self.name}/loss/entropy_loss": np.mean(entropy_losses),
+            f"{self.name}/analytics/clip_fraction": np.mean(clip_fractions),
+            f"{self.name}/analytics/klDivergence": target_kl[-1],
+            f"{self.name}/analytics/K-epoch": k + 1,
+            f"{self.name}/analytics/avg_rewards": torch.mean(rewards).item(),
         }
         grad_dict = self.average_dict_values(grad_dicts)
         norm_dict = self.compute_weight_norm(
             [self.actor, self.critic],
             ["actor", "critic"],
-            dir="PPO",
+            dir=f"{self.name}",
             device=self.device,
         )
         loss_dict.update(grad_dict)
@@ -225,6 +233,7 @@ class PPO(Base):
 
         timesteps = self.num_minibatch * self.minibatch_size
         update_time = time.time() - t0
+
         return loss_dict, timesteps, update_time
 
     def average_dict_values(self, dict_list):

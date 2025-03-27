@@ -97,6 +97,7 @@ class MRL(Base):
         )
 
         #
+        self.dummy = torch.tensor(1e-5).to(self.device)
         self.to(self.device)
 
     def to_device(self, device):
@@ -106,11 +107,8 @@ class MRL(Base):
     def forward(self, state: np.ndarray, deterministic: bool = False):
         self._forward_steps += 1
         state = torch.from_numpy(state).to(self._dtype).to(self.device)
-        x, xref, uref, x_trim, xref_trim = self.trim_state(state)
 
-        a, metaData = self.actor(
-            x, xref, uref, x_trim, xref_trim, deterministic=deterministic
-        )
+        a, metaData = self.actor(state, deterministic=deterministic)
 
         return a, {
             "probs": metaData["probs"],
@@ -251,7 +249,7 @@ class MRL(Base):
         DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
         Bbot = self.Bbot_func(x).to(self.device)  # n, x_dim, state - action dim
 
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        u, _ = self.actor(states)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
@@ -345,24 +343,25 @@ class MRL(Base):
         )
 
     def learn(self, batch):
-        if self.current_update >= int(0.25 * self.nupdates):
-            detach = False
-        else:
+        if self.current_update <= int(0.25 * self.nupdates):
             detach = True
+        else:
+            detach = False
+
+        loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
         if self.current_update <= int(0.5 * self.nupdates):
-            loss_dict, timesteps, update_time = self.learn_W(batch, detach)
-            ppo_loss_dict, timesteps, ppo_update_time = self.learn_ppo(batch)
-            loss_dict.update(ppo_loss_dict)
-            update_time += ppo_update_time
-        else:
-            loss_dict, timesteps, update_time = self.learn_ppo(batch)
+            W_loss_dict, _, W_update_time = self.learn_W(batch, detach)
+            loss_dict.update(W_loss_dict)
+            update_time += W_update_time
 
         self.current_update += 1
 
         return loss_dict, timesteps, update_time
 
-    def learn_W(self, batch: dict, detach: bool):
+    def learn_W(
+        self, batch: dict, detach: bool, avoid_update_and_collect_log: bool = False
+    ):
         """Performs a single training step using PPO, incorporating all reference training steps."""
         self.train()
         t0 = time.time()
@@ -381,17 +380,17 @@ class MRL(Base):
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.W_func.parameters(), max_norm=10.0)
         grad_dict = self.compute_gradient_norm(
-            [self.W_func, self.actor],
-            ["W_func", "actor"],
+            [self.W_func],
+            ["W_func"],
             dir=f"{self.name}",
             device=self.device,
         )
-        self.optimizer.step()
+        if not avoid_update_and_collect_log:
+            self.optimizer.step()
 
         # Logging
         loss_dict = {
-            f"{self.name}/loss/loss": loss.item(),
-            f"{self.name}/analytics/avg_rewards": torch.mean(rewards).item(),
+            f"{self.name}/W_loss/loss": loss.item(),
             f"{self.name}/W_loss/pd_loss": infos["pd_loss"],
             f"{self.name}/W_loss/C1_loss": infos["C1_loss"],
             f"{self.name}/W_loss/C2_loss": infos["C2_loss"],
@@ -407,8 +406,8 @@ class MRL(Base):
             f"{self.name}/Contraction_analytics/M_norm": infos["M_norm"],
         }
         norm_dict = self.compute_weight_norm(
-            [self.W_func, self.actor],
-            ["W_func", "actor"],
+            [self.W_func],
+            ["W_func"],
             dir=f"{self.name}",
             device=self.device,
         )
@@ -419,7 +418,7 @@ class MRL(Base):
         del states
         self.eval()
 
-        timesteps = 0
+        timesteps = rewards.shape[0]
         update_time = time.time() - t0
         return loss_dict, timesteps, update_time
 
@@ -436,7 +435,6 @@ class MRL(Base):
         actions = to_tensor(batch["actions"])
         original_rewards = to_tensor(batch["rewards"])
         rewards = self.get_rewards(states)
-        # rewards = original_rewards.clone()
         terminals = to_tensor(batch["terminals"])
         old_logprobs = to_tensor(batch["logprobs"])
 
@@ -490,8 +488,7 @@ class MRL(Base):
                 value_losses.append(value_loss.item())
 
                 # 2. actor Update
-                x, xref, uref, x_trim, xref_trim = self.trim_state(mb_states)
-                _, metaData = self.actor(x, xref, uref, x_trim, xref_trim)
+                _, metaData = self.actor(mb_states)
                 logprobs = self.actor.log_prob(metaData["dist"], mb_actions)
                 entropy = self.actor.entropy(metaData["dist"])
                 ratios = torch.exp(logprobs - mb_old_logprobs)
@@ -550,6 +547,7 @@ class MRL(Base):
             f"{self.name}/analytics/klDivergence": target_kl[-1],
             f"{self.name}/analytics/K-epoch": k + 1,
             f"{self.name}/analytics/avg_rewards": torch.mean(original_rewards).item(),
+            f"{self.name}/analytics/corrected_avg_rewards": torch.mean(rewards).item(),
         }
         grad_dict = self.average_dict_values(grad_dicts)
         norm_dict = self.compute_weight_norm(
@@ -560,8 +558,6 @@ class MRL(Base):
         )
         loss_dict.update(grad_dict)
         loss_dict.update(norm_dict)
-
-        self.current_update += 1
 
         # Cleanup
         del states, actions, rewards, terminals, old_logprobs
