@@ -1,0 +1,7 @@
+nohup python3 main.py --project RLCM --task quadrotor --algo-name ppo &
+nohup python3 main.py --project RLCM --task quadrotor --algo-name mrl &
+nohup python3 main.py --project RLCM --task quadrotor --algo-name mrl-approx &
+nohup python3 main.py --project RLCM --task quadrotor --algo-name c3m &
+nohup python3 main.py --project RLCM --task quadrotor --algo-name c3m-approx &
+nohup python3 main.py --project RLCM --task quadrotor --algo-name lqr &
+nohup python3 main.py --project RLCM --task quadrotor --algo-name lqr-approx &
