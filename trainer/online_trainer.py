@@ -311,15 +311,15 @@ class Trainer:
         convergence_rate = self.compute_convergence_rate(tref_trajs, error_trajs)
 
         eval_dict = {
-            f"{self.policy.name}/eval/rew_mean": rew_mean,
-            f"{self.policy.name}/eval/rew_std": rew_std,
-            f"{self.policy.name}/eval/auc_mean": auc_mean,
-            f"{self.policy.name}/eval/auc_std": auc_std,
-            f"{self.policy.name}/eval/trk_error_mean": trk_mean,
-            f"{self.policy.name}/eval/trk_error_std": trk_std,
-            f"{self.policy.name}/eval/ctr_effort_mean": ctr_mean,
-            f"{self.policy.name}/eval/ctr_effort_std": ctr_std,
-            f"{self.policy.name}/eval/convergence_rate": convergence_rate,
+            f"eval/rew_mean": rew_mean,
+            f"eval/rew_std": rew_std,
+            f"eval/auc_mean": auc_mean,
+            f"eval/auc_std": auc_std,
+            f"eval/trk_error_mean": trk_mean,
+            f"eval/trk_error_std": trk_std,
+            f"eval/ctr_effort_mean": ctr_mean,
+            f"eval/ctr_effort_std": ctr_std,
+            f"eval/convergence_rate": convergence_rate,
         }
 
         return eval_dict, image_array
