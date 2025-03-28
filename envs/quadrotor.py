@@ -139,7 +139,7 @@ class QuadRotorEnv(gym.Env):
         f[:, 7] = 0
         f[:, 8] = 0
 
-        return f.squeeze()
+        return f  # .squeeze()
 
     def B_func_np(self, x):
         if len(x.shape) == 1:
@@ -163,7 +163,7 @@ class QuadRotorEnv(gym.Env):
         B[:, 6, 0] = 1
         B[:, 7, 1] = 1
         B[:, 8, 2] = 1
-        return B.squeeze()
+        return B  # .squeeze()
 
     def system_reset(self):
         # with temp_seed(int(seed)):
@@ -293,7 +293,7 @@ class QuadRotorEnv(gym.Env):
 
     def step(self, action):
         # policy output ranges [-1, 1]
-        action = self.uref[self.time_steps] + action
+        # action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)

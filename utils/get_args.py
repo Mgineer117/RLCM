@@ -22,6 +22,9 @@ def get_args():
         default=None,
         help='Seed-specific folder name in the "group" folder.',
     )
+    parser.add_argument(
+        "--scheduler", type=str, default=None, help="Name of the model."
+    )
     parser.add_argument("--task", type=str, default="car", help="Name of the model.")
     parser.add_argument(
         "--quality", type=str, default="expert", help="Name of the model."
@@ -38,6 +41,9 @@ def get_args():
     parser.add_argument(
         "--critic-lr", type=float, default=None, help="Base learning rate."
     )
+    parser.add_argument(
+        "--Dynamic-lr", type=float, default=None, help="Base learning rate."
+    )
     parser.add_argument("--W-lr", type=float, default=None, help="Base learning rate.")
     parser.add_argument("--u-lr", type=float, default=None, help="Base learning rate.")
     parser.add_argument("--w-ub", type=float, default=None, help="Base learning rate.")
@@ -48,13 +54,10 @@ def get_args():
     parser.add_argument("--eps", type=float, default=None, help="Base learning rate.")
     parser.add_argument("--lbd", type=float, default=None, help="Base learning rate.")
     parser.add_argument(
-        "--numerical-ord", type=float, default=None, help="Base learning rate."
-    )
-    parser.add_argument(
-        "--M-scheme", type=str, default=None, help="Base learning rate."
-    )
-    parser.add_argument(
         "--ABK-scheme", type=str, default=None, help="Base learning rate."
+    )
+    parser.add_argument(
+        "--DynamicLearner-dim", type=list, default=None, help="Base learning rate."
     )
     parser.add_argument(
         "--actor-dim", type=list, default=None, help="Base learning rate."

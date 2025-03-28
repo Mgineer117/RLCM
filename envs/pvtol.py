@@ -106,7 +106,7 @@ class PvtolEnv(gym.Env):
         f[:, 3] = v_z * dot_phi - g * torch.sin(phi)
         f[:, 4] = -v_x * dot_phi - g * torch.cos(phi)
         f[:, 5] = 0
-        return f.squeeze()
+        return f
 
     def B_func_np(self, x):
         if len(x.shape) == 1:
@@ -132,7 +132,7 @@ class PvtolEnv(gym.Env):
         B[:, 4, 1] = 1 / m
         B[:, 5, 0] = l / J
         B[:, 5, 1] = -l / J
-        return B.squeeze()
+        return B
 
     def system_reset(self):
         # with temp_seed(int(seed)):
@@ -258,7 +258,7 @@ class PvtolEnv(gym.Env):
 
     def step(self, action):
         # policy output ranges [-1, 1]
-        action = self.uref[self.time_steps] + action
+        # action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)

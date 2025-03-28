@@ -174,7 +174,7 @@ class NeuralLanderEnv(gym.Env):
         f[:, 4] = Fa[:, 1] / mass
         f[:, 5] = Fa[:, 2] / mass - g
 
-        return f.squeeze()
+        return f
 
     def B_func_np(self, x: np.ndarray):
         if len(x.shape) == 1:
@@ -198,7 +198,7 @@ class NeuralLanderEnv(gym.Env):
         B[:, 3, 0] = 1
         B[:, 4, 1] = 1
         B[:, 5, 2] = 1
-        return B.squeeze()
+        return B
 
     def system_reset(self):
         # with temp_seed(int(seed)):
@@ -326,7 +326,7 @@ class NeuralLanderEnv(gym.Env):
 
     def step(self, action):
         # policy output ranges [-1, 1]
-        action = self.uref[self.time_steps] + action
+        # action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)

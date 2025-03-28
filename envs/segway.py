@@ -134,7 +134,7 @@ class SegwayEnv(gym.Env):
             - torch.sin(theta) * (208.3 + (omega**2) * torch.cos(theta))
         ) / (torch.cos(theta) ** 2 - 24.7)
 
-        return f.squeeze(0)
+        return f
 
     def B_func_np(self, x: np.ndarray):
         if len(x.shape) == 1:
@@ -162,7 +162,7 @@ class SegwayEnv(gym.Env):
         B[:, 2, 0] = (-1.8 * torch.cos(theta) - 10.9) / (torch.cos(theta) - 24.7)
         B[:, 3, 0] = (9.3 * torch.cos(theta) + 38.6) / (torch.cos(theta) ** 2 - 24.7)
 
-        return B.squeeze(0)
+        return B
 
     def system_reset(self):
         # with temp_seed(int(seed)):
@@ -289,7 +289,7 @@ class SegwayEnv(gym.Env):
 
     def step(self, action):
         # policy output ranges [-1, 1]
-        action = self.uref[self.time_steps] + action
+        # action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)

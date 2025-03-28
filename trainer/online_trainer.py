@@ -113,9 +113,6 @@ class Trainer:
                 loss_dict[f"{self.policy.name}/analytics/timesteps"] = step
                 loss_dict[f"{self.policy.name}/analytics/sample_time"] = sample_time
                 loss_dict[f"{self.policy.name}/analytics/update_time"] = update_time
-                loss_dict[f"{self.policy.name}/analytics/learning_rate"] = (
-                    self.policy.optimizer.param_groups[0]["lr"]
-                )
                 loss_dict[f"{self.policy.name}/analytics/remaining_time (hr)"] = (
                     remaining_time / 3600
                 )  # Convert to hours

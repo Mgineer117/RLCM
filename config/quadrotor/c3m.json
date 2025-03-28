@@ -1,7 +1,12 @@
 {
     "timesteps": 5e6,
     "log_interval": 10,
+    "DynamicLearner_dim": [
+        128,
+        128
+    ],
     "W_lr": 1e-3,
+    "Dynamic_lr": 1e-3,
     "u_lr": 1e-3,
     "w_ub": 10,
     "w_lb": 1e-1,
@@ -9,6 +14,7 @@
     "lbd": 0.5,
     "num_minibatch": 4,
     "minibatch_size": 512,
+    "scheduler": "lambda",
     "eval_episodes": 10,
     "sigma": 0.0
 }

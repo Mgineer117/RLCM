@@ -32,11 +32,16 @@ class PPO_Actor(nn.Module):
             input_dim, hidden_dim, a_dim, activation=self.act, initialization="actor"
         )
 
-    def forward(self, state: torch.Tensor, deterministic: bool = False):
-        if len(state.shape) == 1:
-            state = state.unsqueeze(0)
-        state = state.reshape(state.shape[0], -1)
-
+    def forward(
+        self,
+        x: torch.Tensor,
+        xref: torch.Tensor,
+        uref: torch.Tensor,
+        x_trim: torch.Tensor,
+        xref_trim: torch.Tensor,
+        deterministic: bool = False,
+    ):
+        state = torch.cat((x, xref, uref), dim=-1)
         logits = self.model(state)
 
         if self.is_discrete:
@@ -140,9 +145,6 @@ class Manual_PPO_Actor(nn.Module):
         )
 
     def trim_state(self, state: torch.Tensor):
-        if len(state.shape) == 1:
-            state = state.unsqueeze(0)
-
         # state trimming
         x = state[:, : self.x_dim]
         xref = state[:, self.x_dim : -self.action_dim]
@@ -155,10 +157,13 @@ class Manual_PPO_Actor(nn.Module):
 
     def forward(
         self,
-        state: torch.Tensor,
+        x: torch.Tensor,
+        xref: torch.Tensor,
+        uref: torch.Tensor,
+        x_trim: torch.Tensor,
+        xref_trim: torch.Tensor,
         deterministic: bool = False,
     ):
-        x, xref, uref, x_trim, xref_trim = self.trim_state(state)
         n = x.shape[0]
 
         # Concatenate trimmed state and reference features.

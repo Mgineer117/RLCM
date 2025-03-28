@@ -65,16 +65,52 @@ def get_policy(env, args):
     # this was not discussed in paper nut implemented by c3m author
     effective_indices = env.effective_indices
 
-    if algo_name in ("ppo", "ppo-manual"):
+    if algo_name in ("lqr", "lqr-approx"):
+        from policy.lqr import LQR, LQR_Approximation
+        from policy.layers.dynamic_networks import DynamicLearner
+
+        if algo_name == "lqr":
+            policy = LQR(
+                x_dim=env.num_dim_x,
+                effective_indices=effective_indices,
+                action_dim=args.action_dim,
+                f_func=env.f_func,
+                B_func=env.B_func,
+                Bbot_func=env.Bbot_func,
+                num_minibatch=args.num_minibatch,
+                minibatch_size=args.minibatch_size,
+                nupdates=nupdates,
+            )
+        else:
+            Dynamic_func = DynamicLearner(
+                x_dim=env.num_dim_x,
+                action_dim=args.action_dim,
+                hidden_dim=args.DynamicLearner_dim,
+            )
+            policy = LQR_Approximation(
+                x_dim=env.num_dim_x,
+                effective_indices=effective_indices,
+                action_dim=args.action_dim,
+                Dynamic_func=Dynamic_func,
+                Dynamic_lr=args.Dynamic_lr,
+                f_func=env.f_func,
+                B_func=env.B_func,
+                Bbot_func=env.Bbot_func,
+                num_minibatch=args.num_minibatch,
+                minibatch_size=args.minibatch_size,
+                nupdates=nupdates,
+                dt=env.dt,
+            )
+
+    elif algo_name in ("ppo", "ppo-manual"):
         from policy.ppo import PPO
         from policy.layers.ppo_networks import Manual_PPO_Actor, PPO_Actor, PPO_Critic
 
         if algo_name == "ppo":
             actor = PPO_Actor(
-                x_dim=env.num_dim_x,
-                effective_indices=effective_indices,
-                action_dim=args.action_dim,
-                task=args.task,
+                args.state_dim,
+                hidden_dim=args.actor_dim,
+                a_dim=args.action_dim,
             )
         else:
             actor = Manual_PPO_Actor(
@@ -105,9 +141,10 @@ def get_policy(env, args):
             device=args.device,
         )
 
-    elif algo_name == "c3m":
-        from policy.c3m import C3M
+    elif algo_name in ("c3m", "c3m-approx"):
+        from policy.c3m import C3M, C3M_Approximation
         from policy.layers.c3m_networks import C3M_W, C3M_U
+        from policy.layers.dynamic_networks import DynamicLearner
 
         W_func = C3M_W(
             x_dim=env.num_dim_x,
@@ -124,24 +161,51 @@ def get_policy(env, args):
             action_dim=args.action_dim,
             task=args.task,
         )
-        policy = C3M(
-            x_dim=env.num_dim_x,
-            state_dim=args.state_dim,
-            effective_indices=effective_indices,
-            action_dim=args.action_dim,
-            W_func=W_func,
-            u_func=u_func,
-            f_func=env.f_func,
-            B_func=env.B_func,
-            Bbot_func=env.Bbot_func,
-            W_lr=args.W_lr,
-            u_lr=args.u_lr,
-            lbd=args.lbd,
-            eps=args.eps,
-            w_ub=args.w_ub,
-            nupdates=nupdates,
-            device=args.device,
-        )
+        if algo_name == "c3m":
+            policy = C3M(
+                x_dim=env.num_dim_x,
+                effective_indices=effective_indices,
+                action_dim=args.action_dim,
+                W_func=W_func,
+                u_func=u_func,
+                f_func=env.f_func,
+                B_func=env.B_func,
+                Bbot_func=env.Bbot_func,
+                W_lr=args.W_lr,
+                u_lr=args.u_lr,
+                lbd=args.lbd,
+                eps=args.eps,
+                w_ub=args.w_ub,
+                nupdates=nupdates,
+                device=args.device,
+            )
+        else:
+            Dynamic_func = DynamicLearner(
+                x_dim=env.num_dim_x,
+                action_dim=args.action_dim,
+                hidden_dim=args.DynamicLearner_dim,
+            )
+            policy = C3M_Approximation(
+                x_dim=env.num_dim_x,
+                effective_indices=effective_indices,
+                action_dim=args.action_dim,
+                W_func=W_func,
+                u_func=u_func,
+                Dynamic_func=Dynamic_func,
+                f_func=env.f_func,
+                B_func=env.B_func,
+                Bbot_func=env.Bbot_func,
+                W_lr=args.W_lr,
+                u_lr=args.u_lr,
+                Dynamic_lr=args.Dynamic_lr,
+                lbd=args.lbd,
+                eps=args.eps,
+                w_ub=args.w_ub,
+                nupdates=nupdates,
+                dt=env.dt,
+                device=args.device,
+            )
+
     elif algo_name in ("mrl", "mrl-manual"):
         from policy.mrl import MRL
         from policy.layers.c3m_networks import C3M_W
@@ -201,9 +265,10 @@ def get_policy(env, args):
             device=args.device,
         )
     elif algo_name in ("mrl-approx", "mrl-approx-manual"):
-        from policy.mrl_approx import MRL_Approximation
+        from policy.mrl import MRL_Approximation
         from policy.layers.c3m_networks import C3M_W
         from policy.layers.ppo_networks import Manual_PPO_Actor, PPO_Actor, PPO_Critic
+        from policy.layers.dynamic_networks import DynamicLearner
 
         # this was not discussed in paper nut implemented by c3m author
         effective_indices = env.effective_indices
@@ -215,6 +280,12 @@ def get_policy(env, args):
             action_dim=args.action_dim,
             w_lb=args.w_lb,
             task=args.task,
+        )
+
+        Dynamic_func = DynamicLearner(
+            x_dim=env.num_dim_x,
+            action_dim=args.action_dim,
+            hidden_dim=args.DynamicLearner_dim,
         )
 
         if algo_name == "mrl-approx":
@@ -237,12 +308,14 @@ def get_policy(env, args):
             x_dim=env.num_dim_x,
             effective_indices=effective_indices,
             W_func=W_func,
+            Dynamic_func=Dynamic_func,
             f_func=env.f_func,
             B_func=env.B_func,
             Bbot_func=env.Bbot_func,
             actor=actor,
             critic=critic,
             W_lr=args.W_lr,
+            Dynamic_lr=args.Dynamic_lr,
             actor_lr=args.actor_lr,
             critic_lr=args.critic_lr,
             num_minibatch=args.num_minibatch,
@@ -258,8 +331,6 @@ def get_policy(env, args):
             K=args.K_epochs,
             nupdates=nupdates,
             dt=env.dt,
-            numerical_ord=args.numerical_ord,
-            M_scheme=args.M_scheme,
             ABK_scheme=args.ABK_scheme,
             device=args.device,
         )

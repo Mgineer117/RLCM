@@ -9,6 +9,7 @@
     "lbd": 0.5,
     "num_minibatch": 4,
     "minibatch_size": 256,
+    "scheduler": "lambda",
     "eval_episodes": 10,
     "sigma": 0.0
 }

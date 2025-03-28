@@ -209,9 +209,6 @@ class C3M_U(nn.Module):
         )
 
     def trim_state(self, state: torch.Tensor):
-        if len(state.shape) == 1:
-            state = state.unsqueeze(0)
-
         # state trimming
         x = state[:, : self.x_dim]
         xref = state[:, self.x_dim : -self.action_dim]
@@ -224,10 +221,13 @@ class C3M_U(nn.Module):
 
     def forward(
         self,
-        state: torch.Tensor,
+        x: torch.Tensor,
+        xref: torch.Tensor,
+        uref: torch.Tensor,
+        x_trim: torch.Tensor,
+        xref_trim: torch.Tensor,
         deterministic: bool = False,
     ):
-        x, xref, uref, x_trim, xref_trim = self.trim_state(state)
         n = x.shape[0]
 
         x_xref_trim = torch.cat((x_trim, xref_trim), axis=-1)
@@ -237,6 +237,8 @@ class C3M_U(nn.Module):
         w2 = self.w2(x_xref_trim).reshape(n, self.action_dim, -1)
 
         l1 = F.tanh(torch.matmul(w1, e))
-        a = torch.matmul(w2, l1).squeeze(-1)
+        u = torch.matmul(w2, l1).squeeze(-1)
+
+        a = u + uref
 
         return a

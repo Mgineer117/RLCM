@@ -89,7 +89,7 @@ class CarEnv(gym.Env):
 
         f[:, 0] = x[:, 3] * torch.cos(x[:, 2])
         f[:, 1] = x[:, 3] * torch.sin(x[:, 2])
-        return f.squeeze()
+        return f
 
     def B_func(self, x: torch.Tensor):
         if len(x.shape) == 1:
@@ -99,7 +99,7 @@ class CarEnv(gym.Env):
         B = torch.zeros((n, self.num_dim_x, self.num_dim_control))
         B[:, 2, 0] = 1
         B[:, 3, 1] = 1
-        return B.squeeze()
+        return B
 
     def B_func_np(self, x: np.ndarray):
         if len(x.shape) == 1:
@@ -232,7 +232,7 @@ class CarEnv(gym.Env):
         return self.state, {"x": self.x_t}
 
     def step(self, action):
-        action = self.uref[self.time_steps] + action
+        # action = self.uref[self.time_steps] + action
         action = np.clip(action, UREF_MIN.flatten(), UREF_MAX.flatten())
 
         termination = self.dynamic_fn(action)
