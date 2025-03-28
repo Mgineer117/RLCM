@@ -145,12 +145,8 @@ class Trainer:
                         name="traj_plot",
                     )
 
-                    self.last_reward_mean.append(
-                        eval_dict[f"{self.policy.name}/eval/rew_mean"]
-                    )
-                    self.last_reward_std.append(
-                        eval_dict[f"{self.policy.name}/eval/rew_std"]
-                    )
+                    self.last_reward_mean.append(eval_dict[f"eval/rew_mean"])
+                    self.last_reward_std.append(eval_dict[f"eval/rew_std"])
 
                     self.save_model(step)
 
