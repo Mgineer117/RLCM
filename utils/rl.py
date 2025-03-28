@@ -286,6 +286,7 @@ def get_policy(env, args):
             x_dim=env.num_dim_x,
             action_dim=args.action_dim,
             hidden_dim=args.DynamicLearner_dim,
+            # drop_out=0.2,
         )
 
         if algo_name == "mrl-approx":

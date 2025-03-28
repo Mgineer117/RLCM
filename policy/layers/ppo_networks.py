@@ -44,37 +44,28 @@ class PPO_Actor(nn.Module):
         state = torch.cat((x, xref, uref), dim=-1)
         logits = self.model(state)
 
-        if self.is_discrete:
-            probs = F.softmax(logits, dim=-1)
-            dist = Categorical(probs)
+        ### Shape the output as desired
+        mu = logits
+        logstd = torch.zeros_like(mu)
+        std = torch.exp(logstd)
 
-            if deterministic:
-                a_argmax = torch.argmax(probs, dim=-1)  # .to(self._dtype)
-            else:
-                a_argmax = dist.sample()
-            a = F.one_hot(a_argmax, num_classes=self._a_dim)
-
-            logprobs = dist.log_prob(a_argmax).unsqueeze(-1)
-            probs = torch.sum(probs * a, dim=-1)
+        if deterministic:
+            a = mu
+            dist = None
+            logprobs = torch.zeros_like(mu[:, 0:1])
+            probs = torch.ones_like(logprobs)  # log(1) = 0
+            entropy = torch.zeros_like(logprobs)
 
         else:
-            ### Shape the output as desired
-            mu = logits
-            logstd = torch.zeros_like(mu)
-            std = torch.exp(logstd)
-
             covariance_matrix = torch.diag_embed(std**2)  # Variance is std^2
             dist = MultivariateNormal(loc=mu, covariance_matrix=covariance_matrix)
 
-            if deterministic:
-                a = mu
-            else:
-                a = dist.rsample()
+            a = dist.rsample()
 
             logprobs = dist.log_prob(a).unsqueeze(-1)
             probs = torch.exp(logprobs)
 
-        entropy = dist.entropy()
+            entropy = dist.entropy()
 
         return a, {
             "dist": dist,

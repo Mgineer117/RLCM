@@ -1,6 +1,6 @@
 {
     "timesteps": 3e6,
-    "log_interval": 10,
+    "log_interval": 50,
     "W_lr": 1e-3,
     "u_lr": 1e-3,
     "w_ub": 10,

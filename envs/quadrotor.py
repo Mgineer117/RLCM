@@ -56,7 +56,7 @@ XE_INIT_MAX = np.array(
 # state_weights = np.array([1, 1, 1, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1, 0.1])
 # state_weights = np.array([1, 1, 1, 0.0, 0.0, 0.0, 0.0, 0.1, 0.1, 0.1])
 # state_weights = np.array([1, 1, 1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0])
-state_weights = np.array([1, 1, 1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+state_weights = np.array([1, 1, 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
 
 STATE_MIN = np.concatenate((X_MIN.flatten(), X_MIN.flatten(), UREF_MIN.flatten()))
 STATE_MAX = np.concatenate((X_MAX.flatten(), X_MAX.flatten(), UREF_MAX.flatten()))
@@ -74,7 +74,7 @@ class QuadRotorEnv(gym.Env):
         self.pos_dimension = 3
 
         self.tracking_scaler = 1.0
-        self.control_scaler = 1e-1
+        self.control_scaler = 0.0
 
         self.time_bound = 6.0
         self.dt = 0.03
