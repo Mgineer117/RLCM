@@ -190,7 +190,12 @@ class Trainer:
         tref_trajs = []
         ep_buffer = []
         for num_episodes in range(self.eval_episodes):
-            ep_reward, ep_tracking_error, ep_control_effort = 0, 0, 0
+            ep_reward, ep_tracking_error, ep_control_effort, ep_inference_time = (
+                0,
+                0,
+                0,
+                0,
+            )
             auc_list = []
 
             # Env initialization
@@ -207,7 +212,9 @@ class Trainer:
 
             for t in range(1, self.env.episode_len + 1):
                 with torch.no_grad():
+                    t0 = time.time()
                     a, _ = self.policy(obs, deterministic=True)
+                    t1 = time.time()
                     a = a.cpu().numpy().squeeze(0) if a.shape[-1] > 1 else [a.item()]
 
                 next_obs, rew, term, trunc, infos = self.env.step(a)
@@ -221,6 +228,7 @@ class Trainer:
 
                 obs = next_obs
                 ep_reward += rew
+                ep_inference_time += t1 - t0
                 ep_tracking_error += infos["tracking_error"]
                 ep_control_effort += infos["control_effort"]
 
@@ -230,7 +238,8 @@ class Trainer:
                     auc = np.trapezoid(auc_list, dx=self.env.dt)
                     ep_buffer.append(
                         {
-                            "reward": ep_reward,
+                            "avg_reward": ep_reward / (t + 1),
+                            "avg_inference_time": ep_inference_time / (t + 1),
                             "auc": auc,
                             "tracking_error": ep_tracking_error,
                             "control_effort": ep_control_effort,
@@ -294,12 +303,14 @@ class Trainer:
         # Close the figure to free memory
         plt.close(fig)
 
-        rew_list = [ep_info["reward"] for ep_info in ep_buffer]
+        rew_list = [ep_info["avg_reward"] for ep_info in ep_buffer]
+        inf_list = [ep_info["avg_inference_time"] for ep_info in ep_buffer]
         auc_list = [ep_info["auc"] for ep_info in ep_buffer]
         trk_list = [ep_info["tracking_error"] for ep_info in ep_buffer]
         ctr_list = [ep_info["control_effort"] for ep_info in ep_buffer]
 
         rew_mean, rew_std = np.mean(rew_list), np.std(rew_list)
+        inf_mean, inf_std = np.mean(inf_list), np.std(inf_list)
         auc_mean, auc_std = np.mean(auc_list), np.std(auc_list)
         trk_mean, trk_std = np.mean(trk_list), np.std(trk_list)
         ctr_mean, ctr_std = np.mean(ctr_list), np.std(ctr_list)
@@ -309,6 +320,8 @@ class Trainer:
         eval_dict = {
             f"eval/rew_mean": rew_mean,
             f"eval/rew_std": rew_std,
+            f"eval/inf_mean": inf_mean,
+            f"eval/inf_std": inf_std,
             f"eval/auc_mean": auc_mean,
             f"eval/auc_std": auc_std,
             f"eval/trk_error_mean": trk_mean,

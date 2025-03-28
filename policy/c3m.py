@@ -550,7 +550,7 @@ class C3M_Approximation(Base):
         else:
             return (self.Jacobian_Matrix(W, x) * v.view(bs, 1, 1, -1)).sum(dim=3)
 
-    def compute_error(self, states: torch.Tensor):
+    def get_true_metrics(self, states: torch.Tensor):
         #### COMPUTE THE REAL DYNAMICS TO MEASURE ERRORS ####
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
         x = x.requires_grad_()
@@ -580,11 +580,10 @@ class C3M_Approximation(Base):
 
         dot_x = f + matmul(B, u.unsqueeze(-1)).squeeze(-1)
         dot_M = self.weighted_gradients(M, dot_x, x, True)
-        dot_W = self.weighted_gradients(W, dot_x, x, True)
 
         ABK = A + matmul(B, K)
 
-        return dot_x, dot_M, dot_W, ABK, Bbot, f, B
+        return dot_x, dot_M, ABK, Bbot, f, B
 
     def contraction_loss(
         self,
@@ -598,9 +597,9 @@ class C3M_Approximation(Base):
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
         x = x.requires_grad_()
 
-        next_x, next_xref, next_uref, next_x_trim, next_xref_trim = self.trim_state(
-            next_states
-        )
+        # next_x, next_xref, next_uref, next_x_trim, next_xref_trim = self.trim_state(
+        #     next_states
+        # )
 
         W = self.W_func(x, xref, uref, x_trim, xref_trim)
         M = inverse(W)
@@ -622,11 +621,11 @@ class C3M_Approximation(Base):
             ]
         )
 
-        dot_x_2nd = self.get_dot_x(
-            x=x,
-            next_x=next_x,
-            terminals=terminals,
-        )
+        # dot_x_2nd = self.get_dot_x(
+        #     x=x,
+        #     next_x=next_x,
+        #     terminals=terminals,
+        # )
         # dot_x_true =
         dot_x_approx = f_approx + matmul(B_approx, u.unsqueeze(-1)).squeeze(-1)
         dot_M_approx = self.weighted_gradients(M, dot_x_approx, x, detach)
@@ -665,7 +664,9 @@ class C3M_Approximation(Base):
             C2s.append(C2)
 
         #### COMPUTE LOSS ####
-        fB_loss = F.mse_loss(dot_x_2nd, dot_x_approx)
+        dot_x, dot_M, ABK, Bbot, f, B = self.get_true_metrics(states)
+
+        fB_loss = F.mse_loss(dot_x, dot_x_approx)
         pd_loss = self.loss_pos_matrix_random_sampling(
             -C_u - self.eps * torch.eye(C_u.shape[-1]).to(self.device)
         )
@@ -689,14 +690,10 @@ class C3M_Approximation(Base):
         C1_eig_contraction = ((C1_eig >= 0).sum(dim=1) == 0).cpu().detach().numpy()
 
         ### for loggings
-        dot_x, dot_M, dot_W, ABK, Bbot, f, B = self.compute_error(states)
         with torch.no_grad():
             dot_x_error = F.l1_loss(dot_x, dot_x_approx)
             dot_M_error = torch.linalg.matrix_norm(
                 dot_M - dot_M_approx, ord="fro"
-            ).mean()
-            dot_W_error = torch.linalg.matrix_norm(
-                dot_W - dot_W_approx, ord="fro"
             ).mean()
             ABK_error = torch.linalg.matrix_norm(ABK - ABK_approx, ord="fro").mean()
             Bbot_error = torch.linalg.matrix_norm(Bbot - Bbot_approx, ord="fro").mean()
@@ -715,7 +712,6 @@ class C3M_Approximation(Base):
                 "C1_eig_contraction": C1_eig_contraction.mean(),
                 "dot_x_error": dot_x_error.item(),
                 "dot_M_error": dot_M_error.item(),
-                "dot_W_error": dot_W_error.item(),
                 "ABK_error": ABK_error.item(),
                 "Bbot_error": Bbot_error.item(),
                 "f_error": f_error.item(),
@@ -724,11 +720,78 @@ class C3M_Approximation(Base):
         )
 
     def learn(self, batch):
-        if self.current_update <= int(0.3 * self.nupdates):
+        if self.current_update <= int(0.15 * self.nupdates):
             detach = True
         else:
             detach = False
 
+        loss_dict, timesteps, update_time = self.learn_W(batch, detach)
+
+        if self.current_update <= int(0.3 * self.nupdates):
+            D_loss_dict, D_update_time = self.learn_Dynamics(batch)
+            loss_dict.update(D_loss_dict)
+            update_time += D_update_time
+
+        return loss_dict, timesteps, update_time
+
+    def learn_Dynamics(self, batch: dict):
+        self.train()
+        t0 = time.time()
+
+        # Ingredients: Convert batch data to tensors
+        def to_tensor(data):
+            return torch.from_numpy(data).to(self._dtype).to(self.device)
+
+        states = to_tensor(batch["states"])
+        actions = to_tensor(batch["actions"])
+
+        dot_x, _, _, _, f, B = self.get_true_metrics(states)
+
+        x, _, _, _, _ = self.trim_state(states)
+        f_approx, B_approx = self.Dynamic_func(x)
+
+        dot_x_approx = f_approx + matmul(B_approx, actions.unsqueeze(-1)).squeeze(-1)
+
+        fB_loss = F.mse_loss(dot_x, dot_x_approx)
+
+        with torch.no_grad():
+            f_error = F.l1_loss(f, f_approx)
+            B_error = F.l1_loss(B, B_approx)
+
+        self.optimizer.zero_grad()
+        fB_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.Dynamic_func.parameters(), max_norm=10.0)
+        grad_dict = self.compute_gradient_norm(
+            [self.Dynamic_func],
+            ["Dynamic_func"],
+            dir=f"{self.name}",
+            device=self.device,
+        )
+        self.optimizer.step()
+
+        norm_dict = self.compute_weight_norm(
+            [self.Dynamic_func],
+            ["Dynamic_func"],
+            dir=f"{self.name}",
+            device=self.device,
+        )
+        loss_dict = {
+            f"{self.name}/Dynamic_loss/fB_loss": fB_loss.item(),
+            f"{self.name}/Dynamic_analytics/f_error": f_error.item(),
+            f"{self.name}/Dynamic_analytics/B_error": B_error.item(),
+        }
+        loss_dict.update(grad_dict)
+        loss_dict.update(norm_dict)
+
+        # Cleanup
+        del states, x
+        self.eval()
+
+        update_time = time.time() - t0
+        return loss_dict, update_time
+
+    def learn_W(self, batch: dict, detach: bool):
+        """Performs a single training step using PPO, incorporating all reference training steps."""
         self.train()
         t0 = time.time()
 
@@ -770,7 +833,6 @@ class C3M_Approximation(Base):
             f"{self.name}/analytics/C1_eig_contraction": infos["C1_eig_contraction"],
             f"{self.name}/analytics/dot_x_error": infos["dot_x_error"],
             f"{self.name}/analytics/dot_M_error": infos["dot_M_error"],
-            f"{self.name}/analytics/dot_W_error": infos["dot_W_error"],
             f"{self.name}/analytics/ABK_error": infos["ABK_error"],
             f"{self.name}/analytics/Bbot_error": infos["Bbot_error"],
             f"{self.name}/analytics/f_error": infos["f_error"],

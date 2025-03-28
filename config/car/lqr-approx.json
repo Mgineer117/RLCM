@@ -5,7 +5,7 @@
         128,
         128
     ],
-    "Dynamic_lr": 5e-4,
+    "Dynamic_lr": 1e-3,
     "num_minibatch": 1,
     "minibatch_size": 1024,
     "eval_episodes": 10,

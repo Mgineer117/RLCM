@@ -1,7 +1,5 @@
 import time
-import os
 import torch.nn.functional as F
-import pickle
 import torch
 import torch.nn as nn
 from torch.autograd import grad
@@ -384,19 +382,24 @@ class LQR_Approximation(Base):
         terminals = to_tensor(batch["terminals"])
 
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-        next_x, next_xref, next_uref, next_x_trim, next_xref_trim = self.trim_state(
-            next_states
-        )
+        # next_x, next_xref, next_uref, next_x_trim, next_xref_trim = self.trim_state(
+        #     next_states
+        # )
 
-        dot_x_2nd = self.get_dot_x(
-            x=x,
-            next_x=next_x,
-            terminals=terminals,
-        )
+        # dot_x_2nd = self.get_dot_x(
+        #     x=x,
+        #     next_x=next_x,
+        #     terminals=terminals,
+        # )
+
+        f = self.f_func(x).to(self.device)  # n, x_dim
+        B = self.B_func(x).to(self.device)  # n, x_dim, action
+        dot_x = f + matmul(B, actions.unsqueeze(-1)).squeeze(-1)
 
         f_approx, B_approx = self.Dynamic_func(x)
         dot_x_approx = f_approx + matmul(B_approx, actions.unsqueeze(-1)).squeeze(-1)
-        fB_loss = F.mse_loss(dot_x_2nd, dot_x_approx)
+
+        fB_loss = F.mse_loss(dot_x, dot_x_approx)
 
         self.optimizer.zero_grad()
         fB_loss.backward()
