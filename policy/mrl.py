@@ -856,6 +856,7 @@ class MRL_Approximation(Base):
     def learn(self, batch):
         if self.num_inner_update <= int(0.5 * self.nupdates):
             loss_dict, update_time = self.learn_Dynamics(batch)
+            timesteps = 0
             self.num_inner_update += 1
         else:
             detach = (
