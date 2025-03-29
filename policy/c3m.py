@@ -705,17 +705,13 @@ class C3M_Approximation(Base):
         )
 
     def learn(self, batch):
-        detach = True if self.num_outer_update <= int(0.3 * self.nupdates) else False
+        detach = True if self.num_outer_update <= int(0.5 * self.nupdates) else False
 
-        loss_dict, timesteps, update_time = self.learn_ppo(batch)
-        if self.num_outer_update <= int(0.5 * self.nupdates):
-            D_loss_dict, D_update_time = self.learn_Dynamics(batch)
-            W_loss_dict, W_update_time = self.learn_W(batch, detach)
+        loss_dict, timesteps, update_time = self.learn_W(batch, detach)
+        D_loss_dict, D_update_time = self.learn_Dynamics(batch)
 
-            loss_dict.update(D_loss_dict)
-            loss_dict.update(W_loss_dict)
-            update_time += D_update_time
-            update_time += W_update_time
+        loss_dict.update(D_loss_dict)
+        update_time += D_update_time
 
         self.num_outer_update += 1
 
