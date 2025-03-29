@@ -270,7 +270,7 @@ class LQR_Approximation(Base):
         # Compute Jacobians inside enable_grad context
         with torch.enable_grad():
             # Compute f and B
-            f_xref, B_xref = self.Dynamic_func(xref)
+            f_xref, B_xref, _ = self.Dynamic_func(xref)
             DfDx = self.Jacobian(f_xref, xref)  # shape: (1, x_dim, x_dim)
             DBDx = self.B_Jacobian(B_xref, xref)  # shape: (1, x_dim, x_dim, u_dim)
 
@@ -396,7 +396,7 @@ class LQR_Approximation(Base):
         B = self.B_func(x).to(self.device)  # n, x_dim, action
         dot_x = f + matmul(B, actions.unsqueeze(-1)).squeeze(-1)
 
-        f_approx, B_approx = self.Dynamic_func(x)
+        f_approx, B_approx, _ = self.Dynamic_func(x)
         dot_x_approx = f_approx + matmul(B_approx, actions.unsqueeze(-1)).squeeze(-1)
 
         fB_loss = F.mse_loss(dot_x, dot_x_approx)
