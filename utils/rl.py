@@ -288,6 +288,7 @@ def get_policy(env, args):
             action_dim=args.action_dim,
             hidden_dim=args.DynamicLearner_dim,
             activation=nn.LeakyReLU(),
+            drop_out=0.2,
         )
 
         if algo_name == "mrl-approx":

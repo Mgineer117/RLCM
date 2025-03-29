@@ -40,7 +40,7 @@ class MRL(Base):
         eps: float = 1e-2,
         eps_clip: float = 0.2,
         entropy_scaler: float = 1e-3,
-        l2_reg: float = 1e-5,
+        l2_reg: float = 1e-4,
         target_kl: float = 0.03,
         gamma: float = 0.99,
         gae: float = 0.9,
@@ -123,114 +123,6 @@ class MRL(Base):
             "logprobs": metaData["logprobs"],
             "entropy": metaData["entropy"],
         }
-
-    def loss_pos_matrix_random_sampling(self, A: torch.Tensor):
-        # A: n x d x d
-        # z: K x d
-        n, A_dim, _ = A.shape
-
-        z = torch.randn((n, A_dim)).to(self.device)
-        z = z / z.norm(dim=-1, keepdim=True)
-        z = z.unsqueeze(-1)
-        zT = transpose(z, 1, 2)
-
-        # K x d @ d x d = n x K x d
-        zTAz = matmul(matmul(zT, A), z)
-
-        negative_index = zTAz.detach().cpu().numpy() < 0
-        if negative_index.sum() > 0:
-            negative_zTAz = zTAz[negative_index]
-            return -1.0 * (negative_zTAz.mean())
-        else:
-            return torch.tensor(0.0).type(z.type()).requires_grad_()
-
-    def trim_state(self, state: torch.Tensor):
-        # state trimming
-        x = state[:, : self.x_dim]
-        xref = state[:, self.x_dim : -self.action_dim]
-        uref = state[:, -self.action_dim :]
-
-        x_trim = x[:, self.effective_indices]
-        xref_trim = xref[:, self.effective_indices]
-
-        return x, xref, uref, x_trim, xref_trim
-
-    def get_rewards(self, states):
-        x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-
-        with torch.no_grad():
-            W = self.W_func(x, xref, uref, x_trim, xref_trim)
-            M = torch.inverse(W)
-
-            error = (x - xref).unsqueeze(-1)
-            errorT = transpose(error, 1, 2)
-
-            rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
-
-        return rewards
-
-    def B_null(self, x: torch.Tensor):
-        n = x.shape[0]
-        Bbot = torch.cat(
-            (
-                torch.eye(self.x_dim - self.action_dim, self.x_dim - self.action_dim),
-                torch.zeros(self.action_dim, self.x_dim - self.action_dim),
-            ),
-            dim=0,
-        )
-        Bbot.unsqueeze(0).to(self.device)
-        return Bbot.repeat(n, 1, 1)
-
-    def Jacobian(self, f: torch.Tensor, x: torch.Tensor):
-        # NOTE that this function assume that data are independent of each other
-        f = f + 0.0 * x.sum()  # to avoid the case that f is independent of x
-
-        n = x.shape[0]
-        f_dim = f.shape[-1]
-        x_dim = x.shape[-1]
-
-        J = torch.zeros(n, f_dim, x_dim).to(self.device)  # .to(x.type())
-        for i in range(f_dim):
-            J[:, i, :] = grad(f[:, i].sum(), x, create_graph=True)[0]  # [0]
-        return J
-
-    def Jacobian_Matrix(self, M: torch.Tensor, x: torch.Tensor):
-        # NOTE that this function assume that data are independent of each other
-        M = M + 0.0 * x.sum()  # to avoid the case that f is independent of x
-
-        n = x.shape[0]
-        matrix_dim = M.shape[-1]
-        x_dim = x.shape[-1]
-
-        J = torch.zeros(n, matrix_dim, matrix_dim, x_dim).to(self.device)
-        for i in range(matrix_dim):
-            for j in range(matrix_dim):
-                J[:, i, j, :] = grad(M[:, i, j].sum(), x, create_graph=True)[0]
-
-        return J
-
-    def B_Jacobian(self, B: torch.Tensor, x: torch.Tensor):
-        n = x.shape[0]
-        x_dim = x.shape[-1]
-
-        DBDx = torch.zeros(n, x_dim, x_dim, self.action_dim).to(self.device)
-        for i in range(self.action_dim):
-            DBDx[:, :, :, i] = self.Jacobian(B[:, :, i].unsqueeze(-1), x)
-        return DBDx
-
-    def weighted_gradients(
-        self, W: torch.Tensor, v: torch.Tensor, x: torch.Tensor, detach: bool
-    ):
-        # v, x: bs x n x 1
-        # DWDx: bs x n x n x n
-        assert v.size() == x.size()
-        bs = x.shape[0]
-        if detach:
-            return (self.Jacobian_Matrix(W, x).detach() * v.view(bs, 1, 1, -1)).sum(
-                dim=3
-            )
-        else:
-            return (self.Jacobian_Matrix(W, x) * v.view(bs, 1, 1, -1)).sum(dim=3)
 
     def contraction_loss(
         self,
@@ -344,28 +236,16 @@ class MRL(Base):
         )
 
     def learn(self, batch):
-        if self.num_outer_update <= int(0.2 * self.nupdates):
-            detach = (
-                True if self.num_outer_update <= int(0.1 * self.nupdates) else False
-            )
+        # if self.num_outer_update <= int(0.2 * self.nupdates):
+        detach = True if self.num_outer_update <= int(0.3 * self.nupdates) else False
+
+        loss_dict, timesteps, update_time = self.learn_ppo(batch)
+        if self.num_outer_update <= int(0.5 * self.nupdates):
             W_loss_dict, W_update_time = self.learn_W(batch, detach)
+            loss_dict.update(W_loss_dict)
+            update_time += W_update_time
 
-            if self.num_inner_update % 3 == 0:
-                loss_dict, timesteps, update_time = self.learn_ppo(batch)
-                loss_dict.update(W_loss_dict)
-                update_time += W_update_time
-
-                self.num_outer_update += 1
-                self.num_inner_update += 1
-            else:
-                loss_dict = {}
-                timesteps = 0
-                update_time = 0
-
-                self.num_inner_update += 1
-        else:
-            loss_dict, timesteps, update_time = self.learn_ppo(batch)
-            self.num_outer_update += 1
+        self.num_outer_update += 1
 
         return loss_dict, timesteps, update_time
 
@@ -577,6 +457,115 @@ class MRL(Base):
         update_time = time.time() - t0
         return loss_dict, timesteps, update_time
 
+    def loss_pos_matrix_random_sampling(self, A: torch.Tensor):
+        # A: n x d x d
+        # z: K x d
+        n, A_dim, _ = A.shape
+
+        z = torch.randn((n, A_dim)).to(self.device)
+        z = z / z.norm(dim=-1, keepdim=True)
+        z = z.unsqueeze(-1)
+        zT = transpose(z, 1, 2)
+
+        # K x d @ d x d = n x K x d
+        zTAz = matmul(matmul(zT, A), z)
+
+        negative_index = zTAz.detach().cpu().numpy() < 0
+        if negative_index.sum() > 0:
+            negative_zTAz = zTAz[negative_index]
+            return -1.0 * (negative_zTAz.mean())
+        else:
+            return torch.tensor(0.0).type(z.type()).requires_grad_()
+
+    def trim_state(self, state: torch.Tensor):
+        # state trimming
+        x = state[:, : self.x_dim]
+        xref = state[:, self.x_dim : -self.action_dim]
+        uref = state[:, -self.action_dim :]
+
+        x_trim = x[:, self.effective_indices]
+        xref_trim = xref[:, self.effective_indices]
+
+        return x, xref, uref, x_trim, xref_trim
+
+    def get_rewards(self, states):
+        x, xref, uref, x_trim, xref_trim = self.trim_state(states)
+
+        with torch.no_grad():
+            W = self.W_func(x, xref, uref, x_trim, xref_trim)
+            M = torch.inverse(W)
+
+            error = (x - xref).unsqueeze(-1)
+            errorT = transpose(error, 1, 2)
+
+            rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
+            # rewards = -(errorT @ M @ error).squeeze(-1)
+
+        return rewards
+
+    def B_null(self, x: torch.Tensor):
+        n = x.shape[0]
+        Bbot = torch.cat(
+            (
+                torch.eye(self.x_dim - self.action_dim, self.x_dim - self.action_dim),
+                torch.zeros(self.action_dim, self.x_dim - self.action_dim),
+            ),
+            dim=0,
+        )
+        Bbot.unsqueeze(0).to(self.device)
+        return Bbot.repeat(n, 1, 1)
+
+    def Jacobian(self, f: torch.Tensor, x: torch.Tensor):
+        # NOTE that this function assume that data are independent of each other
+        f = f + 0.0 * x.sum()  # to avoid the case that f is independent of x
+
+        n = x.shape[0]
+        f_dim = f.shape[-1]
+        x_dim = x.shape[-1]
+
+        J = torch.zeros(n, f_dim, x_dim).to(self.device)  # .to(x.type())
+        for i in range(f_dim):
+            J[:, i, :] = grad(f[:, i].sum(), x, create_graph=True)[0]  # [0]
+        return J
+
+    def Jacobian_Matrix(self, M: torch.Tensor, x: torch.Tensor):
+        # NOTE that this function assume that data are independent of each other
+        M = M + 0.0 * x.sum()  # to avoid the case that f is independent of x
+
+        n = x.shape[0]
+        matrix_dim = M.shape[-1]
+        x_dim = x.shape[-1]
+
+        J = torch.zeros(n, matrix_dim, matrix_dim, x_dim).to(self.device)
+        for i in range(matrix_dim):
+            for j in range(matrix_dim):
+                J[:, i, j, :] = grad(M[:, i, j].sum(), x, create_graph=True)[0]
+
+        return J
+
+    def B_Jacobian(self, B: torch.Tensor, x: torch.Tensor):
+        n = x.shape[0]
+        x_dim = x.shape[-1]
+
+        DBDx = torch.zeros(n, x_dim, x_dim, self.action_dim).to(self.device)
+        for i in range(self.action_dim):
+            DBDx[:, :, :, i] = self.Jacobian(B[:, :, i].unsqueeze(-1), x)
+        return DBDx
+
+    def weighted_gradients(
+        self, W: torch.Tensor, v: torch.Tensor, x: torch.Tensor, detach: bool
+    ):
+        # v, x: bs x n x 1
+        # DWDx: bs x n x n x n
+        assert v.size() == x.size()
+        bs = x.shape[0]
+        if detach:
+            return (self.Jacobian_Matrix(W, x).detach() * v.view(bs, 1, 1, -1)).sum(
+                dim=3
+            )
+        else:
+            return (self.Jacobian_Matrix(W, x) * v.view(bs, 1, 1, -1)).sum(dim=3)
+
     def average_dict_values(self, dict_list):
         if not dict_list:
             return {}
@@ -764,8 +753,8 @@ class MRL_Approximation(Base):
         M = inverse(W)
 
         f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
-        # Bbot_approx = self.B_null(x).to(self.device)
-        Bbot_approx = self.compute_B_perp_batch(B_approx, self.x_dim - self.action_dim)
+        Bbot_approx = self.B_null(x).to(self.device)
+        # Bbot_approx = self.compute_B_perp_batch(B_approx, self.x_dim - self.action_dim)
 
         DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
@@ -829,8 +818,8 @@ class MRL_Approximation(Base):
         c1_loss = self.loss_pos_matrix_random_sampling(
             -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
         )
-        # c2_loss = sum([C2.sum().mean() for C2 in C2s])
-        c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
+        c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        # c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
 
         loss = pd_loss + overshoot_loss + c1_loss + c2_loss
 
@@ -845,15 +834,9 @@ class MRL_Approximation(Base):
 
         ### for loggings
         with torch.no_grad():
-            dot_M_error = torch.linalg.matrix_norm(
-                dot_M_true - dot_M_approx, ord="fro"
-            ).mean()
-            ABK_error = torch.linalg.matrix_norm(
-                ABK_true - ABK_approx, ord="fro"
-            ).mean()
-            Bbot_error = torch.linalg.matrix_norm(
-                Bbot_true - Bbot_approx, ord="fro"
-            ).mean()
+            dot_M_error = matrix_norm(dot_M_true - dot_M_approx, ord="fro").mean()
+            ABK_error = matrix_norm(ABK_true - ABK_approx, ord="fro").mean()
+            Bbot_error = matrix_norm(Bbot_true - Bbot_approx, ord="fro").mean()
 
         return (
             loss,
@@ -871,32 +854,20 @@ class MRL_Approximation(Base):
         )
 
     def learn(self, batch):
-        if self.num_outer_update <= int(0.2 * self.nupdates):
+        if self.num_inner_update <= int(0.5 * self.nupdates):
+            loss_dict, update_time = self.learn_Dynamics(batch)
+            self.num_inner_update += 1
+        else:
             detach = (
-                True if self.num_outer_update <= int(0.1 * self.nupdates) else False
+                True if self.num_outer_update <= int(0.3 * self.nupdates) else False
             )
 
-            D_loss_dict, D_update_time = self.learn_Dynamics(batch)
-
-            if self.num_inner_update % 3 == 0:
+            loss_dict, timesteps, update_time = self.learn_ppo(batch)
+            if self.num_outer_update <= int(0.5 * self.nupdates):
                 W_loss_dict, W_update_time = self.learn_W(batch, detach)
-            if self.num_inner_update % 6 == 0:
-                loss_dict, timesteps, update_time = self.learn_ppo(batch)
-                loss_dict.update(D_loss_dict)
                 loss_dict.update(W_loss_dict)
-                update_time += D_update_time
                 update_time += W_update_time
 
-                self.num_outer_update += 1
-                self.num_inner_update += 1
-            else:
-                loss_dict = {}
-                timesteps = 0
-                update_time = 0
-
-                self.num_inner_update += 1
-        else:
-            loss_dict, timesteps, update_time = self.learn_ppo(batch)
             self.num_outer_update += 1
 
         return loss_dict, timesteps, update_time
@@ -1366,7 +1337,7 @@ class MRL_Approximation(Base):
 
         return avg_dict
 
-    def compute_B_perp_batch(self, B, B_perp_dim, method="qr", threshold=1e-1):
+    def compute_B_perp_batch(self, B, B_perp_dim, method="svd", threshold=1e-3):
         """
         Compute the nullspace basis B_perp for each sample (or a single matrix) from B,
         using either SVD or QR decomposition, and return a tensor of shape
