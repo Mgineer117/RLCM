@@ -83,7 +83,8 @@ class MRL(Base):
 
         self._forward_steps = 0
         self.nupdates = nupdates
-        self.current_update = 0
+        self.num_outer_update = 0
+        self.num_inner_update = 0
 
         # trainable networks
         self.W_func = W_func
@@ -343,19 +344,28 @@ class MRL(Base):
         )
 
     def learn(self, batch):
-        if self.current_update <= int(0.25 * self.nupdates):
-            detach = True
+        if self.num_outer_update <= int(0.2 * self.nupdates):
+            detach = (
+                True if self.num_outer_update <= int(0.1 * self.nupdates) else False
+            )
+            W_loss_dict, W_update_time = self.learn_W(batch, detach)
+
+            if self.num_inner_update % 3 == 0:
+                loss_dict, timesteps, update_time = self.learn_ppo(batch)
+                loss_dict.update(W_loss_dict)
+                update_time += W_update_time
+
+                self.num_outer_update += 1
+                self.num_inner_update += 1
+            else:
+                loss_dict = {}
+                timesteps = 0
+                update_time = 0
+
+                self.num_inner_update += 1
         else:
-            detach = False
-
-        loss_dict, timesteps, update_time = self.learn_ppo(batch)
-
-        if self.current_update <= int(0.5 * self.nupdates):
-            W_loss_dict, _, W_update_time = self.learn_W(batch, detach)
-            loss_dict.update(W_loss_dict)
-            update_time += W_update_time
-
-        self.current_update += 1
+            loss_dict, timesteps, update_time = self.learn_ppo(batch)
+            self.num_outer_update += 1
 
         return loss_dict, timesteps, update_time
 
@@ -418,9 +428,8 @@ class MRL(Base):
         del states
         self.eval()
 
-        timesteps = rewards.shape[0]
         update_time = time.time() - t0
-        return loss_dict, timesteps, update_time
+        return loss_dict, update_time
 
     def learn_ppo(self, batch):
         """Performs a single training step using PPO, incorporating all reference training steps."""
@@ -660,7 +669,8 @@ class MRL_Approximation(Base):
 
         self._forward_steps = 0
         self.nupdates = nupdates
-        self.current_update = 0
+        self.num_outer_update = 0
+        self.num_inner_update = 0
 
         # trainable networks
         self.W_func = W_func
@@ -703,10 +713,8 @@ class MRL_Approximation(Base):
 
     def get_true_metrics(self, states: torch.Tensor):
         #### COMPUTE THE REAL DYNAMICS TO MEASURE ERRORS ####
-        states = states.clone().detach()
-        states = states.requires_grad_()
-
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
+        x = x.requires_grad_()
 
         W = self.W_func(x, xref, uref, x_trim, xref_trim)
         M = inverse(W)
@@ -718,8 +726,7 @@ class MRL_Approximation(Base):
         DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
         Bbot = self.Bbot_func(x).to(self.device)  # n, x_dim, state - action dim
 
-        x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        u, _ = self.actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
@@ -746,25 +753,28 @@ class MRL_Approximation(Base):
         terminals: torch.Tensor,
         detach: bool,
     ):
+        dot_x_true, dot_M_true, ABK_true, Bbot_true, _, _ = self.get_true_metrics(
+            states
+        )
+
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
         x = x.requires_grad_()
-        # next_x, next_xref, next_uref, next_x_trim, next_xref_trim = self.trim_state(
-        #     next_states
-        # )
 
         W = self.W_func(x, xref, uref, x_trim, xref_trim)
         M = inverse(W)
 
-        with torch.no_grad():
-            f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
-            # Bbot_approx = self.B_null(x).to(self.device)
+        f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
+        # Bbot_approx = self.B_null(x).to(self.device)
+        Bbot_approx = self.compute_B_perp_batch(B_approx, self.x_dim - self.action_dim)
 
-        DfDx = self.Jacobian(f_approx, x)  # n, f_dim, x_dim
-        DBDx = self.B_Jacobian(B_approx, x)  # n, x_dim, x_dim, b_dim
-        # Compute Bbot by finding orthonormal basis
-        # Bbot_approx = self.compute_B_perp_batch(B_approx, self.x_dim - self.action_dim)
+        DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
 
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        f_approx = f_approx.detach()
+        B_approx = B_approx.detach()
+        Bbot_approx = Bbot_approx.detach()
+
+        u, _ = self.actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
@@ -777,16 +787,8 @@ class MRL_Approximation(Base):
             ]
         )
 
-        # dot_x_2nd = self.get_dot_x(
-        #     x=x,
-        #     next_x=next_x,
-        #     terminals=terminals,
-        # )
-
-        dot_x_approx = f_approx + matmul(B_approx, u.unsqueeze(-1)).squeeze(-1)
-        dot_M_approx = self.weighted_gradients(M, dot_x_approx, x, detach)
-
         # contraction condition
+        dot_M_approx = self.weighted_gradients(M, dot_x_true, x, detach)
         ABK_approx = A + matmul(B_approx, K)
         if detach:
             MABK_approx = matmul(M.detach(), ABK_approx)
@@ -814,13 +816,10 @@ class MRL_Approximation(Base):
             sym_DbDxW = DbDxW + transpose(DbDxW, 1, 2)
             C2_inner = DbW - sym_DbDxW
             C2 = matmul(matmul(transpose(Bbot_approx, 1, 2), C2_inner), Bbot_approx)
-
             C2_inners.append(C2_inner)
             C2s.append(C2)
 
         #### COMPUTE LOSS ####
-        _, dot_M, ABK, Bbot, _, _ = self.get_true_metrics(states)
-
         pd_loss = self.loss_pos_matrix_random_sampling(
             -C_u - self.eps * torch.eye(C_u.shape[-1]).to(self.device)
         )
@@ -847,10 +846,14 @@ class MRL_Approximation(Base):
         ### for loggings
         with torch.no_grad():
             dot_M_error = torch.linalg.matrix_norm(
-                dot_M - dot_M_approx, ord="fro"
+                dot_M_true - dot_M_approx, ord="fro"
             ).mean()
-            ABK_error = torch.linalg.matrix_norm(ABK - ABK_approx, ord="fro").mean()
-            Bbot_error = torch.linalg.matrix_norm(Bbot - Bbot_approx, ord="fro").mean()
+            ABK_error = torch.linalg.matrix_norm(
+                ABK_true - ABK_approx, ord="fro"
+            ).mean()
+            Bbot_error = torch.linalg.matrix_norm(
+                Bbot_true - Bbot_approx, ord="fro"
+            ).mean()
 
         return (
             loss,
@@ -868,27 +871,33 @@ class MRL_Approximation(Base):
         )
 
     def learn(self, batch):
-        if self.current_update <= int(0.1 * self.nupdates):
-            loss_dict, update_time = self.learn_Dynamics(batch)
-            timesteps = batch["rewards"].shape[0]
+        if self.num_outer_update <= int(0.2 * self.nupdates):
+            detach = (
+                True if self.num_outer_update <= int(0.1 * self.nupdates) else False
+            )
+
+            D_loss_dict, D_update_time = self.learn_Dynamics(batch)
+
+            if self.num_inner_update % 3 == 0:
+                W_loss_dict, W_update_time = self.learn_W(batch, detach)
+            if self.num_inner_update % 6 == 0:
+                loss_dict, timesteps, update_time = self.learn_ppo(batch)
+                loss_dict.update(D_loss_dict)
+                loss_dict.update(W_loss_dict)
+                update_time += D_update_time
+                update_time += W_update_time
+
+                self.num_outer_update += 1
+                self.num_inner_update += 1
+            else:
+                loss_dict = {}
+                timesteps = 0
+                update_time = 0
+
+                self.num_inner_update += 1
         else:
             loss_dict, timesteps, update_time = self.learn_ppo(batch)
-
-            if self.current_update <= int(0.25 * self.nupdates):
-                detach = True
-            else:
-                detach = False
-
-            if self.current_update <= int(0.5 * self.nupdates):
-                W_loss_dict, W_update_time = self.learn_W(batch, detach)
-                D_loss_dict, D_update_time = self.learn_Dynamics(batch)
-
-                loss_dict.update(W_loss_dict)
-                loss_dict.update(D_loss_dict)
-                update_time += W_update_time
-                update_time += D_update_time
-
-        self.current_update += 1
+            self.num_outer_update += 1
 
         return loss_dict, timesteps, update_time
 
@@ -915,28 +924,48 @@ class MRL_Approximation(Base):
         ortho_loss = torch.mean(
             (matrix_norm(matmul(Bbot_approx.transpose(1, 2), B_approx.detach())))
         )
-        cont_loss = torch.mean(
-            (
-                matmul(
-                    Bbot_approx.transpose(1, 2),
-                    (dot_x - f_approx).unsqueeze(-1).detach(),
-                )
-                ** 2
-            )
-        )
+
+        #### find adversarial loss ####
+        # x, xref, uref, x_trim, xref_trim = self.trim_state(states)
+        # x = x.requires_grad_()
+
+        # with torch.no_grad():
+        #     W = self.W_func(x, xref, uref, x_trim, xref_trim)
+
+        # DfDx = self.Jacobian(f_approx, x).detach()
+        # DfW = self.weighted_gradients(W, f_approx, x, True).detach()
+        # DfDxW = matmul(DfDx, W)
+        # sym_DfDxW = DfDxW + transpose(DfDxW, 1, 2)
+        # C1_inner = -DfW + sym_DfDxW + 2 * self.lbd * W
+        # C1 = matmul(matmul(transpose(Bbot_approx, 1, 2), C1_inner), Bbot_approx)
+        # # adversarial_loss = -self.loss_pos_matrix_random_sampling(
+        # #     -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
+        # # )
+
+        # this has to be a negative definite matrix
+
+        # cont_loss = torch.mean(
+        #     (
+        #         matmul(
+        #             Bbot_approx.transpose(1, 2),
+        #             (dot_x - f_approx).unsqueeze(-1).detach(),
+        #         )
+        #         ** 2
+        #     )
+        # )
         # I = torch.eye(Bbot_approx.shape[-1], device=Bbot_approx.device)
         # identity_loss = torch.mean(
         #     matrix_norm(matmul(Bbot_approx.transpose(1, 2), Bbot_approx) - I)
         # )
 
-        loss = fB_loss + ortho_loss + cont_loss
+        loss = fB_loss + ortho_loss  # + adversarial_loss  # + cont_loss
         with torch.no_grad():
             f_error = F.l1_loss(f, f_approx)
             B_error = F.l1_loss(B, B_approx)
 
         self.optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.Dynamic_func.parameters(), max_norm=10.0)
+        torch.nn.utils.clip_grad_norm_(self.Dynamic_func.parameters(), max_norm=5.0)
         grad_dict = self.compute_gradient_norm(
             [self.Dynamic_func],
             ["Dynamic_func"],
@@ -955,7 +984,7 @@ class MRL_Approximation(Base):
             f"{self.name}/Dynamic_loss/loss": loss.item(),
             f"{self.name}/Dynamic_loss/fB_loss": fB_loss.item(),
             f"{self.name}/Dynamic_loss/ortho_loss": ortho_loss.item(),
-            f"{self.name}/Dynamic_loss/cont_loss": cont_loss.item(),
+            # f"{self.name}/Dynamic_loss/adversarial_loss": adversarial_loss.item(),
             f"{self.name}/Dynamic_analytics/f_error": f_error.item(),
             f"{self.name}/Dynamic_analytics/B_error": B_error.item(),
         }
@@ -999,7 +1028,7 @@ class MRL_Approximation(Base):
 
         self.optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.W_func.parameters(), max_norm=10.0)
+        torch.nn.utils.clip_grad_norm_(self.W_func.parameters(), max_norm=5.0)
         grad_dict = self.compute_gradient_norm(
             [self.W_func],
             ["W_func"],
@@ -1337,7 +1366,7 @@ class MRL_Approximation(Base):
 
         return avg_dict
 
-    def compute_B_perp_batch(self, B, B_perp_dim, method="svd", threshold=1e-3):
+    def compute_B_perp_batch(self, B, B_perp_dim, method="qr", threshold=1e-1):
         """
         Compute the nullspace basis B_perp for each sample (or a single matrix) from B,
         using either SVD or QR decomposition, and return a tensor of shape

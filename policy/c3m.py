@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import grad
 from torch import matmul, inverse, transpose
+from torch.linalg import matrix_norm
 import numpy as np
 from typing import Callable
 
@@ -199,10 +200,7 @@ class C3M(Base):
         self.train()
         t0 = time.time()
 
-        if self.current_update >= int(0.3 * self.nupdates):
-            detach = False
-        else:
-            detach = True
+        detach = True if self.current_update <= int(0.1 * self.nupdates) else False
 
         # Ingredients: Convert batch data to tensors
         def to_tensor(data):
@@ -402,7 +400,8 @@ class C3M_Approximation(Base):
 
         self._forward_steps = 0
         self.nupdates = nupdates
-        self.current_update = 0
+        self.num_outer_update = 0
+        self.num_inner_update = 0
 
         # trainable networks
         self.W_func = W_func
@@ -593,23 +592,25 @@ class C3M_Approximation(Base):
         terminals: torch.Tensor,
         detach: bool,
     ):
-        states = states.requires_grad_()
+        dot_x_true, dot_M_true, ABK_true, Bbot_true, _, _ = self.get_true_metrics(
+            states
+        )
+
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
         x = x.requires_grad_()
-
-        # next_x, next_xref, next_uref, next_x_trim, next_xref_trim = self.trim_state(
-        #     next_states
-        # )
 
         W = self.W_func(x, xref, uref, x_trim, xref_trim)
         M = inverse(W)
 
-        f_approx, B_approx = self.Dynamic_func(x)
-
-        DfDx = self.Jacobian(f_approx, x)  # n, f_dim, x_dim
-        DBDx = self.B_Jacobian(B_approx, x)  # n, x_dim, x_dim, b_dim
-        # Compute Bbot by finding orthonormal basis
+        f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
         Bbot_approx = self.compute_B_perp_batch(B_approx, self.x_dim - self.action_dim)
+
+        DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
+
+        f_approx = f_approx.detach()
+        B_approx = B_approx.detach()
+        Bbot_approx = Bbot_approx.detach()
 
         u = self.u_func(x, xref, uref, x_trim, xref_trim)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
@@ -621,17 +622,8 @@ class C3M_Approximation(Base):
             ]
         )
 
-        # dot_x_2nd = self.get_dot_x(
-        #     x=x,
-        #     next_x=next_x,
-        #     terminals=terminals,
-        # )
-        # dot_x_true =
-        dot_x_approx = f_approx + matmul(B_approx, u.unsqueeze(-1)).squeeze(-1)
-        dot_M_approx = self.weighted_gradients(M, dot_x_approx, x, detach)
-        dot_W_approx = self.weighted_gradients(W, dot_x_approx, x, detach)
-
         # contraction condition
+        dot_M_approx = self.weighted_gradients(M, dot_x_true, x, detach)
         ABK_approx = A + matmul(B_approx, K)
         if detach:
             MABK_approx = matmul(M.detach(), ABK_approx)
@@ -659,14 +651,10 @@ class C3M_Approximation(Base):
             sym_DbDxW = DbDxW + transpose(DbDxW, 1, 2)
             C2_inner = DbW - sym_DbDxW
             C2 = matmul(matmul(transpose(Bbot_approx, 1, 2), C2_inner), Bbot_approx)
-
             C2_inners.append(C2_inner)
             C2s.append(C2)
 
         #### COMPUTE LOSS ####
-        dot_x, dot_M, ABK, Bbot, f, B = self.get_true_metrics(states)
-
-        fB_loss = F.mse_loss(dot_x, dot_x_approx)
         pd_loss = self.loss_pos_matrix_random_sampling(
             -C_u - self.eps * torch.eye(C_u.shape[-1]).to(self.device)
         )
@@ -678,7 +666,7 @@ class C3M_Approximation(Base):
         )
         c2_loss = sum([C2.sum().mean() for C2 in C2s])
 
-        loss = fB_loss + pd_loss + overshoot_loss + c1_loss + c2_loss
+        loss = pd_loss + overshoot_loss + c1_loss + c2_loss
 
         C_eig, _ = torch.linalg.eig(C_u)
         C1_eig, _ = torch.linalg.eig(C1)
@@ -691,46 +679,52 @@ class C3M_Approximation(Base):
 
         ### for loggings
         with torch.no_grad():
-            dot_x_error = F.l1_loss(dot_x, dot_x_approx)
             dot_M_error = torch.linalg.matrix_norm(
-                dot_M - dot_M_approx, ord="fro"
+                dot_M_true - dot_M_approx, ord="fro"
             ).mean()
-            ABK_error = torch.linalg.matrix_norm(ABK - ABK_approx, ord="fro").mean()
-            Bbot_error = torch.linalg.matrix_norm(Bbot - Bbot_approx, ord="fro").mean()
-            f_error = F.l1_loss(f, f_approx)
-            B_error = F.l1_loss(B, B_approx)
+            ABK_error = torch.linalg.matrix_norm(
+                ABK_true - ABK_approx, ord="fro"
+            ).mean()
+            Bbot_error = torch.linalg.matrix_norm(
+                Bbot_true - Bbot_approx, ord="fro"
+            ).mean()
 
         return (
             loss,
             {
-                "fB_loss": fB_loss.item(),
                 "pd_loss": pd_loss.item(),
                 "overshoot_loss": overshoot_loss.item(),
                 "c1_loss": c1_loss.item(),
                 "c2_loss": c2_loss.item(),
                 "C_eig_contraction": C_eig_contraction.mean(),
                 "C1_eig_contraction": C1_eig_contraction.mean(),
-                "dot_x_error": dot_x_error.item(),
                 "dot_M_error": dot_M_error.item(),
                 "ABK_error": ABK_error.item(),
                 "Bbot_error": Bbot_error.item(),
-                "f_error": f_error.item(),
-                "B_error": B_error.item(),
             },
         )
 
     def learn(self, batch):
-        if self.current_update <= int(0.15 * self.nupdates):
-            detach = True
-        else:
-            detach = False
+        detach = True if self.num_outer_update <= int(0.1 * self.nupdates) else False
 
-        loss_dict, timesteps, update_time = self.learn_W(batch, detach)
-
-        if self.current_update <= int(0.3 * self.nupdates):
+        if self.num_outer_update <= int(0.2 * self.nupdates):
             D_loss_dict, D_update_time = self.learn_Dynamics(batch)
-            loss_dict.update(D_loss_dict)
-            update_time += D_update_time
+            if self.num_inner_update % 3 == 0:
+                loss_dict, timesteps, update_time = self.learn_W(batch, detach)
+                loss_dict.update(D_loss_dict)
+                update_time += D_update_time
+
+                self.num_outer_update += 1
+                self.num_inner_update += 1
+            else:
+                loss_dict = {}
+                timesteps = 0
+                update_time = 0
+
+                self.num_inner_update += 1
+        else:
+            loss_dict, timesteps, update_time = self.learn_W(batch, detach)
+            self.num_outer_update += 1
 
         return loss_dict, timesteps, update_time
 
@@ -748,19 +742,24 @@ class C3M_Approximation(Base):
         dot_x, _, _, _, f, B = self.get_true_metrics(states)
 
         x, _, _, _, _ = self.trim_state(states)
-        f_approx, B_approx = self.Dynamic_func(x)
+        f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
 
         dot_x_approx = f_approx + matmul(B_approx, actions.unsqueeze(-1)).squeeze(-1)
 
         fB_loss = F.mse_loss(dot_x, dot_x_approx)
+        ortho_loss = torch.mean(
+            (matrix_norm(matmul(Bbot_approx.transpose(1, 2), B_approx.detach())))
+        )
+
+        loss = fB_loss + ortho_loss  # + cont_loss
 
         with torch.no_grad():
             f_error = F.l1_loss(f, f_approx)
             B_error = F.l1_loss(B, B_approx)
 
         self.optimizer.zero_grad()
-        fB_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.Dynamic_func.parameters(), max_norm=10.0)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.Dynamic_func.parameters(), max_norm=5.0)
         grad_dict = self.compute_gradient_norm(
             [self.Dynamic_func],
             ["Dynamic_func"],
@@ -776,7 +775,10 @@ class C3M_Approximation(Base):
             device=self.device,
         )
         loss_dict = {
+            f"{self.name}/Dynamic_loss/loss": loss.item(),
             f"{self.name}/Dynamic_loss/fB_loss": fB_loss.item(),
+            f"{self.name}/Dynamic_loss/ortho_loss": ortho_loss.item(),
+            # f"{self.name}/Dynamic_loss/cont_loss": cont_loss.item(),
             f"{self.name}/Dynamic_analytics/f_error": f_error.item(),
             f"{self.name}/Dynamic_analytics/B_error": B_error.item(),
         }
@@ -812,7 +814,7 @@ class C3M_Approximation(Base):
 
         self.optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.W_func.parameters(), max_norm=10.0)
+        torch.nn.utils.clip_grad_norm_(self.W_func.parameters(), max_norm=5.0)
         grad_dict = self.compute_gradient_norm(
             [self.W_func],
             ["W_func"],
@@ -824,19 +826,15 @@ class C3M_Approximation(Base):
         # Logging
         loss_dict = {
             f"{self.name}/loss/loss": loss.item(),
-            f"{self.name}/loss/fB_loss": infos["fB_loss"],
             f"{self.name}/loss/pd_loss": infos["pd_loss"],
             f"{self.name}/loss/overshoot_loss": infos["overshoot_loss"],
             f"{self.name}/loss/c1_loss": infos["c1_loss"],
             f"{self.name}/loss/c2_loss": infos["c2_loss"],
             f"{self.name}/analytics/C_eig_contraction": infos["C_eig_contraction"],
             f"{self.name}/analytics/C1_eig_contraction": infos["C1_eig_contraction"],
-            f"{self.name}/analytics/dot_x_error": infos["dot_x_error"],
             f"{self.name}/analytics/dot_M_error": infos["dot_M_error"],
             f"{self.name}/analytics/ABK_error": infos["ABK_error"],
             f"{self.name}/analytics/Bbot_error": infos["Bbot_error"],
-            f"{self.name}/analytics/f_error": infos["f_error"],
-            f"{self.name}/analytics/B_error": infos["B_error"],
             f"{self.name}/analytics/avg_rewards": torch.mean(rewards).item(),
         }
         norm_dict = self.compute_weight_norm(
@@ -854,7 +852,6 @@ class C3M_Approximation(Base):
         del states, actions, next_states, terminals
         self.eval()
 
-        self.current_update += 1
         update_time = time.time() - t0
 
         return loss_dict, timesteps, update_time
@@ -879,14 +876,14 @@ class C3M_Approximation(Base):
 
         return traj_x_list
 
-    def compute_B_perp_batch(self, BK, B_perp_dim, method="svd", threshold=1e-1):
+    def compute_B_perp_batch(self, B, B_perp_dim, method="qr", threshold=1e-1):
         """
-        Compute the nullspace basis B_perp for each sample (or a single matrix) from BK,
+        Compute the nullspace basis B_perp for each sample (or a single matrix) from B,
         using either SVD or QR decomposition, and return a tensor of shape
         (batch, x_dim, B_perp_dim) or (x_dim, B_perp_dim) for single input.
 
         Parameters:
-            BK: Tensor of shape (batch, x_dim, x_dim) or (x_dim, x_dim).
+            B: Tensor of shape (batch, x_dim, x_dim) or (x_dim, x_dim).
             B_perp_dim: Desired number of nullspace vectors (output columns).
             method: "svd" or "qr".
             threshold: Threshold below which singular values or R diagonals are considered zero.
@@ -895,40 +892,35 @@ class C3M_Approximation(Base):
             B_perp_tensor: Tensor of shape (batch, x_dim, B_perp_dim) or (x_dim, B_perp_dim).
         """
         # Handle single matrix input by unsqueezing to batch size 1
-        is_single_input = False
-        if BK.ndim == 2:
-            BK = BK.unsqueeze(0)  # shape becomes (1, x_dim, x_dim)
-            is_single_input = True
-
-        batch_size, x_dim, _ = BK.shape
+        batch_size, x_dim, _ = B.shape
         B_perp_list = []
 
         for i in range(batch_size):
-            BK_i = BK[i]
+            B_i = B[i]
 
             if method.lower() == "svd":
-                U, S, _ = torch.linalg.svd(BK_i)
+                U, S, _ = torch.linalg.svd(B_i)
                 null_indices = (S < threshold).nonzero(as_tuple=True)[0]
                 B_perp = (
                     U[:, null_indices]
                     if null_indices.numel() > 0
-                    else torch.empty(x_dim, 0, device=BK.device, dtype=BK.dtype)
+                    else torch.empty(x_dim, 0, device=B.device, dtype=B.dtype)
                 )
 
             elif method.lower() == "qr":
-                Q, R = torch.linalg.qr(BK_i.T)
+                Q, R = torch.linalg.qr(B_i, mode="complete")
                 diag_R = torch.abs(torch.diag(R))
                 null_indices = (diag_R < threshold).nonzero(as_tuple=True)[0]
                 B_perp = (
                     Q[:, null_indices]
                     if null_indices.numel() > 0
-                    else torch.empty(x_dim, 0, device=BK.device, dtype=BK.dtype)
+                    else torch.empty(x_dim, 0, device=B.device, dtype=B.dtype)
                 )
             else:
                 raise ValueError("Method must be either 'svd' or 'qr'.")
 
             # Pad or truncate to fixed B_perp_dim
-            padded = torch.zeros(x_dim, B_perp_dim, device=BK.device, dtype=BK.dtype)
+            padded = torch.zeros(x_dim, B_perp_dim, device=B.device, dtype=B.dtype)
             m = B_perp.shape[1]
             if m > 0:
                 padded[:, : min(m, B_perp_dim)] = B_perp[:, :B_perp_dim]
@@ -936,11 +928,7 @@ class C3M_Approximation(Base):
 
         B_perp_tensor = torch.stack(B_perp_list, dim=0)  # (batch, x_dim, B_perp_dim)
 
-        # If input was single matrix, return without batch dimension
-        if is_single_input:
-            return B_perp_tensor.squeeze(0)
-        else:
-            return B_perp_tensor
+        return B_perp_tensor
 
     def get_dot_x(
         self,
