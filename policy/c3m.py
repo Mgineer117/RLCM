@@ -200,7 +200,7 @@ class C3M(Base):
         self.train()
         t0 = time.time()
 
-        detach = True if self.current_update <= int(0.1 * self.nupdates) else False
+        detach = True if self.current_update <= int(0.3 * self.nupdates) else False
 
         # Ingredients: Convert batch data to tensors
         def to_tensor(data):
@@ -305,8 +305,8 @@ class C3M(Base):
         C_eig = torch.real(C_eig)
         C1_eig = torch.real(C1_eig)
 
-        C_eig_contraction = ((C_eig >= 0).sum(dim=-1) == 0).cpu().detach().numpy()
-        C1_eig_contraction = ((C1_eig >= 0).sum(dim=1) == 0).cpu().detach().numpy()
+        C_eig_contraction = C_eig[C_eig >= 0].sum(dim=-1).mean()
+        C1_eig_contraction = C1_eig[C1_eig >= 0].sum(dim=-1).mean()
 
         with torch.no_grad():
             dot_M_norm = torch.linalg.norm(dot_M)
@@ -320,8 +320,8 @@ class C3M(Base):
             "C3M/loss/c1_loss": c1_loss.item(),
             "C3M/loss/c2_loss": c2_loss.item(),
             "C3M/loss/overshoot_loss": overshoot_loss.item(),
-            "C3M/analytics/C_eig_contraction": C_eig_contraction.mean(),
-            "C3M/analytics/C1_eig_contraction": C1_eig_contraction.mean(),
+            "C3M/analytics/C_eig_contraction": C_eig_contraction.item(),
+            "C3M/analytics/C1_eig_contraction": C1_eig_contraction.item(),
             "C3M/analytics/avg_rewards": torch.mean(rewards).item(),
             "C3M/analytics/dot_M_norm": dot_M_norm.item(),
             "C3M/analytics/sym_MABK_norm": sym_MABK_norm.item(),
@@ -674,8 +674,8 @@ class C3M_Approximation(Base):
         C_eig = torch.real(C_eig)
         C1_eig = torch.real(C1_eig)
 
-        C_eig_contraction = ((C_eig >= 0).sum(dim=-1) == 0).cpu().detach().numpy()
-        C1_eig_contraction = ((C1_eig >= 0).sum(dim=1) == 0).cpu().detach().numpy()
+        C_eig_contraction = C_eig[C_eig >= 0].sum(dim=-1).mean()
+        C1_eig_contraction = C1_eig[C1_eig >= 0].sum(dim=-1).mean()
 
         ### for loggings
         with torch.no_grad():
@@ -696,8 +696,8 @@ class C3M_Approximation(Base):
                 "overshoot_loss": overshoot_loss.item(),
                 "c1_loss": c1_loss.item(),
                 "c2_loss": c2_loss.item(),
-                "C_eig_contraction": C_eig_contraction.mean(),
-                "C1_eig_contraction": C1_eig_contraction.mean(),
+                "C_eig_contraction": C_eig_contraction.item(),
+                "C1_eig_contraction": C1_eig_contraction.item(),
                 "dot_M_error": dot_M_error.item(),
                 "ABK_error": ABK_error.item(),
                 "Bbot_error": Bbot_error.item(),
@@ -705,26 +705,19 @@ class C3M_Approximation(Base):
         )
 
     def learn(self, batch):
-        detach = True if self.num_outer_update <= int(0.1 * self.nupdates) else False
+        detach = True if self.num_outer_update <= int(0.3 * self.nupdates) else False
 
-        if self.num_outer_update <= int(0.2 * self.nupdates):
+        loss_dict, timesteps, update_time = self.learn_ppo(batch)
+        if self.num_outer_update <= int(0.5 * self.nupdates):
             D_loss_dict, D_update_time = self.learn_Dynamics(batch)
-            if self.num_inner_update % 3 == 0:
-                loss_dict, timesteps, update_time = self.learn_W(batch, detach)
-                loss_dict.update(D_loss_dict)
-                update_time += D_update_time
+            W_loss_dict, W_update_time = self.learn_W(batch, detach)
 
-                self.num_outer_update += 1
-                self.num_inner_update += 1
-            else:
-                loss_dict = {}
-                timesteps = 0
-                update_time = 0
+            loss_dict.update(D_loss_dict)
+            loss_dict.update(W_loss_dict)
+            update_time += D_update_time
+            update_time += W_update_time
 
-                self.num_inner_update += 1
-        else:
-            loss_dict, timesteps, update_time = self.learn_W(batch, detach)
-            self.num_outer_update += 1
+        self.num_outer_update += 1
 
         return loss_dict, timesteps, update_time
 
@@ -876,7 +869,7 @@ class C3M_Approximation(Base):
 
         return traj_x_list
 
-    def compute_B_perp_batch(self, B, B_perp_dim, method="qr", threshold=1e-1):
+    def compute_B_perp_batch(self, B, B_perp_dim, method="svd", threshold=1e-1):
         """
         Compute the nullspace basis B_perp for each sample (or a single matrix) from B,
         using either SVD or QR decomposition, and return a tensor of shape

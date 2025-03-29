@@ -249,6 +249,7 @@ class LQR_Approximation(Base):
             self.Bbot_func = Bbot_func
 
         #
+        self.num_update = 0
         self.dt = dt
         self.dummy = torch.tensor(1e-5)
         self.to(self.device)
@@ -372,74 +373,81 @@ class LQR_Approximation(Base):
         self.train()
         t0 = time.time()
 
-        # Ingredients: Convert batch data to tensors
-        def to_tensor(data):
-            return torch.from_numpy(data).to(self._dtype).to(self.device)
+        if self.num_update <= int(0.5 * self.nupdates):
+            # Ingredients: Convert batch data to tensors
+            def to_tensor(data):
+                return torch.from_numpy(data).to(self._dtype).to(self.device)
 
-        states = to_tensor(batch["states"])
-        actions = to_tensor(batch["actions"])
-        next_states = to_tensor(batch["next_states"])
-        terminals = to_tensor(batch["terminals"])
+            states = to_tensor(batch["states"])
+            actions = to_tensor(batch["actions"])
+            next_states = to_tensor(batch["next_states"])
+            terminals = to_tensor(batch["terminals"])
 
-        x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-        # next_x, next_xref, next_uref, next_x_trim, next_xref_trim = self.trim_state(
-        #     next_states
-        # )
+            x, xref, uref, x_trim, xref_trim = self.trim_state(states)
+            # next_x, next_xref, next_uref, next_x_trim, next_xref_trim = self.trim_state(
+            #     next_states
+            # )
 
-        # dot_x_2nd = self.get_dot_x(
-        #     x=x,
-        #     next_x=next_x,
-        #     terminals=terminals,
-        # )
+            # dot_x_2nd = self.get_dot_x(
+            #     x=x,
+            #     next_x=next_x,
+            #     terminals=terminals,
+            # )
 
-        f = self.f_func(x).to(self.device)  # n, x_dim
-        B = self.B_func(x).to(self.device)  # n, x_dim, action
-        dot_x = f + matmul(B, actions.unsqueeze(-1)).squeeze(-1)
-
-        f_approx, B_approx, _ = self.Dynamic_func(x)
-        dot_x_approx = f_approx + matmul(B_approx, actions.unsqueeze(-1)).squeeze(-1)
-
-        fB_loss = F.mse_loss(dot_x, dot_x_approx)
-
-        self.optimizer.zero_grad()
-        fB_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=10.0)
-        grad_dict = self.compute_gradient_norm(
-            [self.Dynamic_func],
-            ["Dynamic_func"],
-            dir=f"{self.name}",
-            device=self.device,
-        )
-        self.optimizer.step()
-
-        norm_dict = self.compute_weight_norm(
-            [self.Dynamic_func],
-            ["Dynamic_func"],
-            dir=f"{self.name}",
-            device=self.device,
-        )
-
-        with torch.no_grad():
-            f = self.f_func(x)
-            B = self.B_func(x)
+            f = self.f_func(x).to(self.device)  # n, x_dim
+            B = self.B_func(x).to(self.device)  # n, x_dim, action
             dot_x = f + matmul(B, actions.unsqueeze(-1)).squeeze(-1)
 
-            f_error = F.l1_loss(f, f_approx)
-            B_error = F.l1_loss(B, B_approx)
-            dot_x_error = F.l1_loss(dot_x, dot_x_approx)
+            f_approx, B_approx, _ = self.Dynamic_func(x)
+            dot_x_approx = f_approx + matmul(B_approx, actions.unsqueeze(-1)).squeeze(
+                -1
+            )
 
-        loss_dict = {
-            f"{self.name}/loss/fB_loss": fB_loss.item(),
-            f"{self.name}/loss/f_error": f_error.item(),
-            f"{self.name}/loss/B_error": B_error.item(),
-            f"{self.name}/loss/dot_x_error": dot_x_error.item(),
-            f"{self.name}/analytics/avg_rewards": np.mean(batch["rewards"]).item(),
-        }
-        loss_dict.update(grad_dict)
-        loss_dict.update(norm_dict)
+            fB_loss = F.mse_loss(dot_x, dot_x_approx)
 
-        timesteps = self.num_minibatch * self.minibatch_size
-        update_time = time.time() - t0
+            self.optimizer.zero_grad()
+            fB_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=10.0)
+            grad_dict = self.compute_gradient_norm(
+                [self.Dynamic_func],
+                ["Dynamic_func"],
+                dir=f"{self.name}",
+                device=self.device,
+            )
+            self.optimizer.step()
+
+            norm_dict = self.compute_weight_norm(
+                [self.Dynamic_func],
+                ["Dynamic_func"],
+                dir=f"{self.name}",
+                device=self.device,
+            )
+
+            with torch.no_grad():
+                f = self.f_func(x)
+                B = self.B_func(x)
+                dot_x = f + matmul(B, actions.unsqueeze(-1)).squeeze(-1)
+
+                f_error = F.l1_loss(f, f_approx)
+                B_error = F.l1_loss(B, B_approx)
+                dot_x_error = F.l1_loss(dot_x, dot_x_approx)
+
+            loss_dict = {
+                f"{self.name}/loss/fB_loss": fB_loss.item(),
+                f"{self.name}/loss/f_error": f_error.item(),
+                f"{self.name}/loss/B_error": B_error.item(),
+                f"{self.name}/loss/dot_x_error": dot_x_error.item(),
+                f"{self.name}/analytics/avg_rewards": np.mean(batch["rewards"]).item(),
+            }
+            loss_dict.update(grad_dict)
+            loss_dict.update(norm_dict)
+
+            timesteps = self.num_minibatch * self.minibatch_size
+            update_time = time.time() - t0
+        else:
+            loss_dict = {}
+            timesteps = self.num_minibatch * self.minibatch_size
+            update_time = 0
         return loss_dict, timesteps, update_time
 
     def extract_trajectories(self, x: torch.Tensor, terminals: torch.Tensor) -> list:

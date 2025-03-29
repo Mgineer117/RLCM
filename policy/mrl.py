@@ -218,8 +218,8 @@ class MRL(Base):
         C_eig = torch.real(C_eig)
         C1_eig = torch.real(C1_eig)
 
-        C_eig_contraction = ((C_eig >= 0).sum(dim=-1) == 0).cpu().detach().numpy()
-        C1_eig_contraction = ((C1_eig >= 0).sum(dim=1) == 0).cpu().detach().numpy()
+        C_eig_contraction = C_eig[C_eig >= 0].sum(dim=-1).mean()
+        C1_eig_contraction = C1_eig[C1_eig >= 0].sum(dim=-1).mean()
 
         return (
             loss,
@@ -228,8 +228,8 @@ class MRL(Base):
                 "C1_loss": c1_loss.item(),
                 "C2_loss": c2_loss.item(),
                 "overshoot_loss": overshoot_loss.item(),
-                "C_eig_contraction": C_eig_contraction.mean(),
-                "C1_eig_contraction": C1_eig_contraction.mean(),
+                "C_eig_contraction": C_eig_contraction.item(),
+                "C1_eig_contraction": C1_eig_contraction.item(),
                 "dot_M_norm": dot_M_norm.item(),
                 "sym_MABK_norm": sym_MABK_norm.item(),
                 "M_norm": M_norm.item(),
@@ -242,6 +242,7 @@ class MRL(Base):
         loss_dict, timesteps, update_time = self.learn_ppo(batch)
         if self.num_outer_update <= int(0.5 * self.nupdates):
             W_loss_dict, W_update_time = self.learn_W(batch, detach)
+
             loss_dict.update(W_loss_dict)
             update_time += W_update_time
 
@@ -753,8 +754,8 @@ class MRL_Approximation(Base):
         M = inverse(W)
 
         f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
-        Bbot_approx = self.B_null(x).to(self.device)
-        # Bbot_approx = self.compute_B_perp_batch(B_approx, self.x_dim - self.action_dim)
+        # Bbot_approx = self.B_null(x).to(self.device)
+        Bbot_approx = self.compute_B_perp_batch(B_approx, self.x_dim - self.action_dim)
 
         DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
@@ -829,8 +830,11 @@ class MRL_Approximation(Base):
         C_eig = torch.real(C_eig)
         C1_eig = torch.real(C1_eig)
 
-        C_eig_contraction = ((C_eig >= 0).sum(dim=-1) == 0).cpu().detach().numpy()
-        C1_eig_contraction = ((C1_eig >= 0).sum(dim=1) == 0).cpu().detach().numpy()
+        C_eig_contraction = C_eig[C_eig >= 0].sum(dim=-1).mean()
+        C1_eig_contraction = C1_eig[C1_eig >= 0].sum(dim=-1).mean()
+
+        # C_eig_contraction = ((C_eig >= 0).sum(dim=-1) == 0).cpu().detach().numpy()
+        # C1_eig_contraction = ((C1_eig >= 0).sum(dim=1) == 0).cpu().detach().numpy()
 
         ### for loggings
         with torch.no_grad():
@@ -845,8 +849,8 @@ class MRL_Approximation(Base):
                 "overshoot_loss": overshoot_loss.item(),
                 "c1_loss": c1_loss.item(),
                 "c2_loss": c2_loss.item(),
-                "C_eig_contraction": C_eig_contraction.mean(),
-                "C1_eig_contraction": C1_eig_contraction.mean(),
+                "C_eig_contraction": C_eig_contraction.item(),
+                "C1_eig_contraction": C1_eig_contraction.item(),
                 "dot_M_error": dot_M_error.item(),
                 "ABK_error": ABK_error.item(),
                 "Bbot_error": Bbot_error.item(),
@@ -854,22 +858,19 @@ class MRL_Approximation(Base):
         )
 
     def learn(self, batch):
-        if self.num_inner_update <= int(0.2 * self.nupdates):
-            loss_dict, update_time = self.learn_Dynamics(batch)
-            timesteps = 0
-            self.num_inner_update += 1
-        else:
-            detach = (
-                True if self.num_outer_update <= int(0.3 * self.nupdates) else False
-            )
+        detach = True if self.num_outer_update <= int(0.3 * self.nupdates) else False
 
-            loss_dict, timesteps, update_time = self.learn_ppo(batch)
-            if self.num_outer_update <= int(0.5 * self.nupdates):
-                W_loss_dict, W_update_time = self.learn_W(batch, detach)
-                loss_dict.update(W_loss_dict)
-                update_time += W_update_time
+        loss_dict, timesteps, update_time = self.learn_ppo(batch)
+        if self.num_outer_update <= int(0.5 * self.nupdates):
+            D_loss_dict, D_update_time = self.learn_Dynamics(batch)
+            W_loss_dict, W_update_time = self.learn_W(batch, detach)
 
-            self.num_outer_update += 1
+            loss_dict.update(D_loss_dict)
+            loss_dict.update(W_loss_dict)
+            update_time += D_update_time
+            update_time += W_update_time
+
+        self.num_outer_update += 1
 
         return loss_dict, timesteps, update_time
 
@@ -896,39 +897,6 @@ class MRL_Approximation(Base):
         ortho_loss = torch.mean(
             (matrix_norm(matmul(Bbot_approx.transpose(1, 2), B_approx.detach())))
         )
-
-        #### find adversarial loss ####
-        # x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-        # x = x.requires_grad_()
-
-        # with torch.no_grad():
-        #     W = self.W_func(x, xref, uref, x_trim, xref_trim)
-
-        # DfDx = self.Jacobian(f_approx, x).detach()
-        # DfW = self.weighted_gradients(W, f_approx, x, True).detach()
-        # DfDxW = matmul(DfDx, W)
-        # sym_DfDxW = DfDxW + transpose(DfDxW, 1, 2)
-        # C1_inner = -DfW + sym_DfDxW + 2 * self.lbd * W
-        # C1 = matmul(matmul(transpose(Bbot_approx, 1, 2), C1_inner), Bbot_approx)
-        # # adversarial_loss = -self.loss_pos_matrix_random_sampling(
-        # #     -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
-        # # )
-
-        # this has to be a negative definite matrix
-
-        # cont_loss = torch.mean(
-        #     (
-        #         matmul(
-        #             Bbot_approx.transpose(1, 2),
-        #             (dot_x - f_approx).unsqueeze(-1).detach(),
-        #         )
-        #         ** 2
-        #     )
-        # )
-        # I = torch.eye(Bbot_approx.shape[-1], device=Bbot_approx.device)
-        # identity_loss = torch.mean(
-        #     matrix_norm(matmul(Bbot_approx.transpose(1, 2), Bbot_approx) - I)
-        # )
 
         loss = fB_loss + ortho_loss  # + adversarial_loss  # + cont_loss
         with torch.no_grad():
@@ -1338,7 +1306,7 @@ class MRL_Approximation(Base):
 
         return avg_dict
 
-    def compute_B_perp_batch(self, B, B_perp_dim, method="svd", threshold=1e-3):
+    def compute_B_perp_batch(self, B, B_perp_dim, method="svd", threshold=1e-1):
         """
         Compute the nullspace basis B_perp for each sample (or a single matrix) from B,
         using either SVD or QR decomposition, and return a tensor of shape

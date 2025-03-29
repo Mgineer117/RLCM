@@ -1,8 +1,7 @@
 {
-    "timesteps": 5e6,
-    "log_interval": 50,
+    "timesteps": 1e7,
+    "log_interval": 100,
     "DynamicLearner_dim": [
-        128,
         128,
         128
     ],
