@@ -490,17 +490,57 @@ class MRL(Base):
         return x, xref, uref, x_trim, xref_trim
 
     def get_rewards(self, states):
+        # x, xref, uref, x_trim, xref_trim = self.trim_state(states)
+
+        # with torch.no_grad():
+        #     W = self.W_func(x, xref, uref, x_trim, xref_trim)
+        #     M = torch.inverse(W)
+
+        #     error = (x - xref).unsqueeze(-1)
+        #     errorT = transpose(error, 1, 2)
+
+        #     rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
+
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
+        x = x.requires_grad_()
 
-        with torch.no_grad():
-            W = self.W_func(x, xref, uref, x_trim, xref_trim)
-            M = torch.inverse(W)
+        W = self.W_func(x, xref, uref, x_trim, xref_trim)
+        M = inverse(W)
 
-            error = (x - xref).unsqueeze(-1)
-            errorT = transpose(error, 1, 2)
+        f = self.f_func(x).to(self.device)  # n, x_dim
+        B = self.B_func(x).to(self.device)  # n, x_dim, action
 
-            rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
-            # rewards = -(errorT @ M @ error).squeeze(-1)
+        DfDx = self.Jacobian(f, x)  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
+
+        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        K = self.Jacobian(u, x)  # n, f_dim, x_dim
+
+        u = u.detach()
+        K = K.detach()
+
+        A = DfDx + sum(
+            [
+                u[:, i].unsqueeze(-1).unsqueeze(-1) * DBDx[:, :, :, i]
+                for i in range(self.action_dim)
+            ]
+        )
+
+        dot_x = f + matmul(B, u.unsqueeze(-1)).squeeze(-1)
+        dot_M = self.weighted_gradients(M, dot_x, x, True)
+
+        # contraction condition
+        ABK = A + matmul(B, K)
+        MABK = matmul(M.detach(), ABK)
+        sym_MABK = MABK + transpose(MABK, 1, 2)
+
+        eigvals, _ = torch.linalg.eig(sym_MABK)
+        eigvals = torch.real(eigvals)
+
+        positive_penalty = torch.relu(eigvals)
+        # rewards = -positive_penalty.sum(dim=1)
+        # log(1 + x) softens large values
+        rewards = -torch.log1p(positive_penalty.sum(dim=1))
 
         return rewards
 

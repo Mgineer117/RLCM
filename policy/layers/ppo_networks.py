@@ -67,6 +67,7 @@ class PPO_Actor(nn.Module):
 
             entropy = dist.entropy()
 
+        a = a + uref
         return a, {
             "dist": dist,
             "probs": probs,
