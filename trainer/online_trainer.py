@@ -70,22 +70,11 @@ class Trainer:
 
         self.seed = seed
 
-    def train(self, scheduler: str | None = None) -> dict[str, float]:
+    def train(self) -> dict[str, float]:
         start_time = time.time()
 
         self.last_reward_mean = deque(maxlen=3)
         self.last_reward_std = deque(maxlen=3)
-
-        ### DEFINE LR SCHEDULER ####
-        if scheduler == "lambda":
-
-            def lr_lambda(step):
-                # linearly decay from 1.0 at step=0 to 0.0 at step=max_steps
-                return 1.0 - float(step) / float(self.nupdates)
-
-            lr_scheduler = LambdaLR(self.policy.optimizer, lr_lambda=lr_lambda)
-        else:
-            lr_scheduler = None
 
         # Train loop
         eval_idx = 0
@@ -119,10 +108,6 @@ class Trainer:
 
                 self.write_log(loss_dict, step=step)
 
-                #### LR-SCHEDULING ####
-                if lr_scheduler is not None:
-                    lr_scheduler.step()
-
                 #### EVALUATIONS ####
                 if step >= self.eval_interval * (eval_idx + 1):
                     ### Eval Loop
@@ -141,7 +126,7 @@ class Trainer:
                     self.write_image(
                         traj_plot,
                         step=step,
-                        logdir=f"{self.policy.name}",
+                        logdir=f"eval",
                         name="traj_plot",
                     )
 

@@ -48,7 +48,7 @@ def run(args, seed, unique_id, exp_time):
         seed=args.seed,
     )
 
-    trainer.train(scheduler=args.scheduler)
+    trainer.train()
     wandb.finish()
 
 

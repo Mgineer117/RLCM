@@ -239,6 +239,6 @@ class C3M_U(nn.Module):
         l1 = F.tanh(torch.matmul(w1, e))
         u = torch.matmul(w2, l1).squeeze(-1)
 
-        a = u + uref
+        # a = u + uref
 
-        return a
+        return u

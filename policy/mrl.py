@@ -7,14 +7,17 @@ import torch.nn.functional as F
 from torch.autograd import grad
 from torch import matmul, inverse, transpose
 from torch.linalg import matrix_norm
+from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 from typing import Callable
+from copy import deepcopy
 
 # from utils.torch import get_flat_grad_from, get_flat_params_from, set_flat_params_to
 from utils.rl import estimate_advantages
 
 # from actor.layers.building_blocks import MLP
 from policy.base import Base
+
 
 # from models.layers.ppo_networks import PPO_Policy, PPO_Critic
 
@@ -40,7 +43,7 @@ class MRL(Base):
         eps: float = 1e-2,
         eps_clip: float = 0.2,
         entropy_scaler: float = 1e-3,
-        l2_reg: float = 1e-4,
+        l2_reg: float = 1e-8,
         target_kl: float = 0.03,
         gamma: float = 0.99,
         gae: float = 0.9,
@@ -86,22 +89,35 @@ class MRL(Base):
         self.num_outer_update = 0
         self.num_inner_update = 0
 
+        self.actor_lr = actor_lr
+        self.critic_lr = critic_lr
+
         # trainable networks
         self.W_func = W_func
+        self.W_optimizer = torch.optim.Adam(params=self.W_func.parameters(), lr=W_lr)
+
         self.actor = actor
         self.critic = critic
 
-        self.optimizer = torch.optim.Adam(
+        self.cloned_actor = deepcopy(self.actor)
+        self.cloned_critic = deepcopy(self.critic)
+
+        self.ppo_optimizer = torch.optim.Adam(
             [
-                {"params": self.W_func.parameters(), "lr": W_lr},
-                {"params": self.actor.parameters(), "lr": actor_lr},
-                {"params": self.critic.parameters(), "lr": critic_lr},
+                {"params": self.cloned_actor.parameters(), "lr": actor_lr},
+                {"params": self.cloned_critic.parameters(), "lr": critic_lr},
             ]
         )
 
-        #
+        self.tau = 0.2  # for soft update of target networks
+
+        self.lr_scheduler = LambdaLR(self.W_optimizer, lr_lambda=self.lr_lambda)
+
         self.dummy = torch.tensor(1e-5).to(self.device)
         self.to(self.device)
+
+    def lr_lambda(self, step):
+        return 1.0 - float(step) / float(self.nupdates)
 
     def to_device(self, device):
         self.device = device
@@ -135,7 +151,6 @@ class MRL(Base):
         W = self.W_func(x, xref, uref, x_trim, xref_trim)
         M = inverse(W)
 
-        # x = x.requires_grad_()
         f = self.f_func(x).to(self.device)  # n, x_dim
         B = self.B_func(x).to(self.device)  # n, x_dim, action
 
@@ -143,7 +158,7 @@ class MRL(Base):
         DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
         Bbot = self.Bbot_func(x).to(self.device)  # n, x_dim, state - action dim
 
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        u, _ = self.cloned_actor(x, xref, uref, x_trim, xref_trim)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
@@ -158,18 +173,16 @@ class MRL(Base):
 
         dot_x = f + matmul(B, u.unsqueeze(-1)).squeeze(-1)
         dot_M = self.weighted_gradients(M, dot_x, x, detach)
-
-        # contraction condition
+        ABK = A + matmul(B, K)
         if detach:
-            ABK = A + matmul(B, K)
             MABK = matmul(M.detach(), ABK)
             sym_MABK = MABK + transpose(MABK, 1, 2)
             C_u = dot_M + sym_MABK + 2 * self.lbd * M.detach()
         else:
-            ABK = A + matmul(B, K)
             MABK = matmul(M, ABK)
             sym_MABK = MABK + transpose(MABK, 1, 2)
             C_u = dot_M + sym_MABK + 2 * self.lbd * M
+
         # C1
         DfW = self.weighted_gradients(W, f, x, detach)
         DfDxW = matmul(DfDx, W)
@@ -187,7 +200,6 @@ class MRL(Base):
             sym_DbDxW = DbDxW + transpose(DbDxW, 1, 2)
             C2_inner = DbW - sym_DbDxW
             C2 = matmul(matmul(transpose(Bbot, 1, 2), C2_inner), Bbot)
-
             C2_inners.append(C2_inner)
             C2s.append(C2)
 
@@ -198,8 +210,8 @@ class MRL(Base):
         c1_loss = self.loss_pos_matrix_random_sampling(
             -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
         )
-        # c2_loss = sum([C2.sum().mean() for C2 in C2s])
-        c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
+        c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        # c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
         overshoot_loss = self.loss_pos_matrix_random_sampling(
             self.w_ub * torch.eye(W.shape[-1]).to(self.device) - W
         )
@@ -208,18 +220,12 @@ class MRL(Base):
 
         ### for loggings
         with torch.no_grad():
-            dot_M_norm = torch.linalg.norm(dot_M)
-            sym_MABK_norm = torch.linalg.norm(sym_MABK)
-            M_norm = torch.linalg.norm(M)
+            dot_M_pos_eig, dot_M_neg_eig = self.get_matrix_eig(dot_M)
+            sym_MABK_pos_eig, sym_MABK_neg_eig = self.get_matrix_eig(sym_MABK)
+            M_pos_eig, M_neg_eig = self.get_matrix_eig(M)
 
-        C_eig, _ = torch.linalg.eig(C_u)
-        C1_eig, _ = torch.linalg.eig(C1)
-
-        C_eig = torch.real(C_eig)
-        C1_eig = torch.real(C1_eig)
-
-        C_eig_contraction = C_eig[C_eig >= 0].sum(dim=-1).mean()
-        C1_eig_contraction = C1_eig[C1_eig >= 0].sum(dim=-1).mean()
+            C_pos_eig, C_neg_eig = self.get_matrix_eig(C_u)
+            C1_pos_eig, C1_neg_eig = self.get_matrix_eig(C1)
 
         return (
             loss,
@@ -228,31 +234,50 @@ class MRL(Base):
                 "C1_loss": c1_loss.item(),
                 "C2_loss": c2_loss.item(),
                 "overshoot_loss": overshoot_loss.item(),
-                "C_eig_contraction": C_eig_contraction.item(),
-                "C1_eig_contraction": C1_eig_contraction.item(),
-                "dot_M_norm": dot_M_norm.item(),
-                "sym_MABK_norm": sym_MABK_norm.item(),
-                "M_norm": M_norm.item(),
+                "C_pos_eig": C_pos_eig.item(),
+                "C_neg_eig": C_neg_eig.item(),
+                "C1_pos_eig": C1_pos_eig.item(),
+                "C1_neg_eig": C1_neg_eig.item(),
+                "dot_M_pos_eig": dot_M_pos_eig.item(),
+                "dot_M_neg_eig": dot_M_neg_eig.item(),
+                "sym_MABK_pos_eig": sym_MABK_pos_eig.item(),
+                "sym_MABK_neg_eig": sym_MABK_neg_eig.item(),
+                "M_pos_eig": M_pos_eig.item(),
+                "M_neg_eig": M_neg_eig.item(),
             },
         )
+
+    def get_matrix_eig(self, A: torch.Tensor):
+        with torch.no_grad():
+            eigvals = torch.linalg.eigvalsh(A)  # (batch, dim), real symmetric
+            pos_eigvals = torch.relu(eigvals)
+            neg_eigvals = torch.relu(-eigvals)
+        return pos_eigvals.mean(dim=1).mean(), neg_eigvals.mean(dim=1).mean()
 
     def learn(self, batch):
         detach = True if self.num_outer_update <= int(0.3 * self.nupdates) else False
 
         loss_dict, timesteps, update_time = self.learn_ppo(batch)
-        if self.num_outer_update <= int(0.5 * self.nupdates):
+
+        if self.num_inner_update % 5 == 0:
             W_loss_dict, W_update_time = self.learn_W(batch, detach)
+            self.update_params()
 
             loss_dict.update(W_loss_dict)
             update_time += W_update_time
 
-        self.num_outer_update += 1
+            self.num_outer_update += 1
+            self.lr_scheduler.step()
+        else:
+            loss_dict = {}
+            timesteps = 0
+            update_time = 0
+
+        self.num_inner_update += 1
 
         return loss_dict, timesteps, update_time
 
-    def learn_W(
-        self, batch: dict, detach: bool, avoid_update_and_collect_log: bool = False
-    ):
+    def learn_W(self, batch: dict, detach: bool):
         """Performs a single training step using PPO, incorporating all reference training steps."""
         self.train()
         t0 = time.time()
@@ -262,12 +287,11 @@ class MRL(Base):
             return torch.from_numpy(data).to(self._dtype).to(self.device)
 
         states = to_tensor(batch["states"])
-        rewards = to_tensor(batch["rewards"])
 
         # List to track actor loss over minibatches
         loss, infos = self.contraction_loss(states, detach)
 
-        self.optimizer.zero_grad()
+        self.W_optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.W_func.parameters(), max_norm=10.0)
         grad_dict = self.compute_gradient_norm(
@@ -276,8 +300,7 @@ class MRL(Base):
             dir=f"{self.name}",
             device=self.device,
         )
-        if not avoid_update_and_collect_log:
-            self.optimizer.step()
+        self.W_optimizer.step()
 
         # Logging
         loss_dict = {
@@ -286,15 +309,16 @@ class MRL(Base):
             f"{self.name}/W_loss/C1_loss": infos["C1_loss"],
             f"{self.name}/W_loss/C2_loss": infos["C2_loss"],
             f"{self.name}/W_loss/overshoot_loss": infos["overshoot_loss"],
-            f"{self.name}/Contraction_analytics/C_eig_contraction": infos[
-                "C_eig_contraction"
-            ],
-            f"{self.name}/Contraction_analytics/C1_eig_contraction": infos[
-                "C1_eig_contraction"
-            ],
-            f"{self.name}/Contraction_analytics/dot_M_norm": infos["dot_M_norm"],
-            f"{self.name}/Contraction_analytics/sym_MABK_norm": infos["sym_MABK_norm"],
-            f"{self.name}/Contraction_analytics/M_norm": infos["M_norm"],
+            f"{self.name}/C_analytics/C_pos_eig": infos["C_pos_eig"],
+            f"{self.name}/C_analytics/C_neg_eig": infos["C_neg_eig"],
+            f"{self.name}/C_analytics/C1_pos_eig": infos["C1_pos_eig"],
+            f"{self.name}/C_analytics/C1_neg_eig": infos["C1_neg_eig"],
+            f"{self.name}/C_analytics/dot_M_pos_eig": infos["dot_M_pos_eig"],
+            f"{self.name}/C_analytics/dot_M_neg_eig": infos["dot_M_neg_eig"],
+            f"{self.name}/C_analytics/sym_MABK_pos_eig": infos["sym_MABK_pos_eig"],
+            f"{self.name}/C_analytics/sym_MABK_neg_eig": infos["sym_MABK_neg_eig"],
+            f"{self.name}/C_analytics/M_pos_eig": infos["M_pos_eig"],
+            f"{self.name}/C_analytics/M_neg_eig": infos["M_neg_eig"],
         }
         norm_dict = self.compute_weight_norm(
             [self.W_func],
@@ -311,6 +335,31 @@ class MRL(Base):
 
         update_time = time.time() - t0
         return loss_dict, update_time
+
+    def update_params(self):
+        # soft update
+        for param_main, param_clone in zip(
+            self.actor.parameters(), self.cloned_actor.parameters()
+        ):
+            param_main.data.copy_(
+                (1.0 - self.tau) * param_main.data + self.tau * param_clone.data
+            )
+        for param_main, param_clone in zip(
+            self.critic.parameters(), self.cloned_critic.parameters()
+        ):
+            param_main.data.copy_(
+                (1.0 - self.tau) * param_main.data + self.tau * param_clone.data
+            )
+
+        self.cloned_actor = deepcopy(self.actor)
+        self.cloned_critic = deepcopy(self.critic)
+
+        self.ppo_optimizer = torch.optim.Adam(
+            [
+                {"params": self.cloned_actor.parameters(), "lr": self.actor_lr},
+                {"params": self.cloned_critic.parameters(), "lr": self.critic_lr},
+            ]
+        )
 
     def learn_ppo(self, batch):
         """Performs a single training step using PPO, incorporating all reference training steps."""
@@ -330,7 +379,7 @@ class MRL(Base):
 
         # Compute advantages and returns
         with torch.no_grad():
-            values = self.critic(states)
+            values = self.cloned_critic(states)
             advantages, returns = estimate_advantages(
                 rewards,
                 terminals,
@@ -366,10 +415,10 @@ class MRL(Base):
                 ) / mb_advantages.std()
 
                 # 1. Critic Update (with optional regularization)
-                mb_values = self.critic(mb_states)
+                mb_values = self.cloned_critic(mb_states)
                 value_loss = self.mse_loss(mb_values, mb_returns)
                 l2_reg = (
-                    sum(param.pow(2).sum() for param in self.critic.parameters())
+                    sum(param.pow(2).sum() for param in self.cloned_critic.parameters())
                     * self.l2_reg
                 )
                 value_loss += l2_reg
@@ -379,9 +428,9 @@ class MRL(Base):
 
                 # 2. actor Update
                 x, xref, uref, x_trim, xref_trim = self.trim_state(mb_states)
-                _, metaData = self.actor(x, xref, uref, x_trim, xref_trim)
-                logprobs = self.actor.log_prob(metaData["dist"], mb_actions)
-                entropy = self.actor.entropy(metaData["dist"])
+                _, metaData = self.cloned_actor(x, xref, uref, x_trim, xref_trim)
+                logprobs = self.cloned_actor.log_prob(metaData["dist"], mb_actions)
+                entropy = self.cloned_actor.entropy(metaData["dist"])
                 ratios = torch.exp(logprobs - mb_old_logprobs)
 
                 surr1 = ratios * mb_advantages
@@ -413,17 +462,17 @@ class MRL(Base):
                     break
 
                 # Update critic parameters
-                self.optimizer.zero_grad()
+                self.ppo_optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5)
                 grad_dict = self.compute_gradient_norm(
-                    [self.actor, self.critic],
+                    [self.cloned_actor, self.cloned_critic],
                     ["actor", "critic"],
                     dir=f"{self.name}",
                     device=self.device,
                 )
                 grad_dicts.append(grad_dict)
-                self.optimizer.step()
+                self.ppo_optimizer.step()
 
             if kl_div.item() > self.target_kl:
                 break
@@ -442,7 +491,7 @@ class MRL(Base):
         }
         grad_dict = self.average_dict_values(grad_dicts)
         norm_dict = self.compute_weight_norm(
-            [self.actor, self.critic],
+            [self.cloned_actor, self.cloned_critic],
             ["actor", "critic"],
             dir=f"{self.name}",
             device=self.device,
@@ -490,28 +539,25 @@ class MRL(Base):
         return x, xref, uref, x_trim, xref_trim
 
     def get_rewards(self, states):
-        # x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-
-        # with torch.no_grad():
-        #     W = self.W_func(x, xref, uref, x_trim, xref_trim)
-        #     M = torch.inverse(W)
-
-        #     error = (x - xref).unsqueeze(-1)
-        #     errorT = transpose(error, 1, 2)
-
-        #     rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
-
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
         x = x.requires_grad_()
 
-        W = self.W_func(x, xref, uref, x_trim, xref_trim)
-        M = inverse(W)
+        with torch.no_grad():
+            ### Compute the main rewards
+            W = self.W_func(x, xref, uref, x_trim, xref_trim)
+            M = torch.inverse(W)
 
+            error = (x - xref).unsqueeze(-1)
+            errorT = transpose(error, 1, 2)
+
+            rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
+
+        ### Compute the aux rewards ###
         f = self.f_func(x).to(self.device)  # n, x_dim
         B = self.B_func(x).to(self.device)  # n, x_dim, action
 
-        DfDx = self.Jacobian(f, x)  # n, f_dim, x_dim
-        DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
+        DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
 
         u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
@@ -526,21 +572,22 @@ class MRL(Base):
             ]
         )
 
-        dot_x = f + matmul(B, u.unsqueeze(-1)).squeeze(-1)
-        dot_M = self.weighted_gradients(M, dot_x, x, True)
-
-        # contraction condition
         ABK = A + matmul(B, K)
-        MABK = matmul(M.detach(), ABK)
+        MABK = matmul(M, ABK)
         sym_MABK = MABK + transpose(MABK, 1, 2)
 
-        eigvals, _ = torch.linalg.eig(sym_MABK)
-        eigvals = torch.real(eigvals)
+        C_u_only = -sym_MABK - self.eps * torch.eye(sym_MABK.shape[-1]).to(self.device)
 
-        positive_penalty = torch.relu(eigvals)
-        # rewards = -positive_penalty.sum(dim=1)
-        # log(1 + x) softens large values
-        rewards = -torch.log1p(positive_penalty.sum(dim=1))
+        aux_rewards = torch.linalg.eigvalsh(C_u_only).mean(dim=1).unsqueeze(-1)
+
+        pos_indices = aux_rewards > 0
+        neg_indices = aux_rewards <= 0
+
+        aux_rewards[pos_indices] = torch.tanh(aux_rewards[pos_indices] / 30)
+        aux_rewards[neg_indices] = -1.0
+
+        alpha = 0.5
+        rewards = alpha * rewards + (1 - alpha) * aux_rewards
 
         return rewards
 
@@ -702,23 +749,38 @@ class MRL_Approximation(Base):
         self.num_outer_update = 0
         self.num_inner_update = 0
 
+        self.actor_lr = actor_lr
+        self.critic_lr = critic_lr
+
         # trainable networks
         self.W_func = W_func
         self.Dynamic_func = Dynamic_func
         self.actor = actor
         self.critic = critic
+        self.cloned_actor = deepcopy(self.actor)
+        self.cloned_critic = deepcopy(self.critic)
 
-        self.optimizer = torch.optim.Adam(
+        self.W_optimizer = torch.optim.Adam(params=self.W_func.parameters(), lr=W_lr)
+        self.Dynamic_optimizer = torch.optim.Adam(
+            params=self.Dynamic_func.parameters(), lr=Dynamic_lr
+        )
+        self.ppo_optimizer = torch.optim.Adam(
             [
-                {"params": self.W_func.parameters(), "lr": W_lr},
-                {"params": self.Dynamic_func.parameters(), "lr": Dynamic_lr},
                 {"params": self.actor.parameters(), "lr": actor_lr},
                 {"params": self.critic.parameters(), "lr": critic_lr},
             ]
         )
 
+        self.tau = 0.2  # for soft update of target networks
+
+        self.W_lr_scheduler = LambdaLR(self.W_optimizer, lr_lambda=self.lr_lambda)
+        self.D_lr_scheduler = LambdaLR(self.Dynamic_optimizer, lr_lambda=self.lr_lambda)
+
         #
         self.to(self.device)
+
+    def lr_lambda(self, step):
+        return 1.0 - float(step) / float(self.nupdates)
 
     def to_device(self, device):
         self.device = device
@@ -773,8 +835,18 @@ class MRL_Approximation(Base):
         dot_M = self.weighted_gradients(M, dot_x, x, True)
 
         ABK = A + matmul(B, K)
+        MABK = matmul(M.detach(), ABK)
+        sym_MABK = MABK + transpose(MABK, 1, 2)
 
-        return dot_x, dot_M, ABK, Bbot, f, B
+        return {
+            "dot_x_true": dot_x,
+            "dot_M_true": dot_M,
+            "ABK_true": ABK,
+            "sym_MABK_true": sym_MABK,
+            "Bbot_true": Bbot,
+            "f_true": f,
+            "B_true": B,
+        }
 
     def contraction_loss(
         self,
@@ -783,9 +855,7 @@ class MRL_Approximation(Base):
         terminals: torch.Tensor,
         detach: bool,
     ):
-        dot_x_true, dot_M_true, ABK_true, Bbot_true, _, _ = self.get_true_metrics(
-            states
-        )
+        true_dict = self.get_true_metrics(states)
 
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
         x = x.requires_grad_()
@@ -818,7 +888,7 @@ class MRL_Approximation(Base):
         )
 
         # contraction condition
-        dot_M_approx = self.weighted_gradients(M, dot_x_true, x, detach)
+        dot_M_approx = self.weighted_gradients(M, true_dict["dot_x_true"], x, detach)
         ABK_approx = A + matmul(B_approx, K)
         if detach:
             MABK_approx = matmul(M.detach(), ABK_approx)
@@ -859,28 +929,31 @@ class MRL_Approximation(Base):
         c1_loss = self.loss_pos_matrix_random_sampling(
             -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
         )
-        # c2_loss = sum([C2.sum().mean() for C2 in C2s])
-        c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
+        c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        # c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
 
         loss = pd_loss + overshoot_loss + c1_loss + c2_loss
 
-        C_eig, _ = torch.linalg.eig(C_u)
-        C1_eig, _ = torch.linalg.eig(C1)
-
-        C_eig = torch.real(C_eig)
-        C1_eig = torch.real(C1_eig)
-
-        C_eig_contraction = C_eig[C_eig >= 0].sum(dim=-1).mean()
-        C1_eig_contraction = C1_eig[C1_eig >= 0].sum(dim=-1).mean()
-
-        # C_eig_contraction = ((C_eig >= 0).sum(dim=-1) == 0).cpu().detach().numpy()
-        # C1_eig_contraction = ((C1_eig >= 0).sum(dim=1) == 0).cpu().detach().numpy()
-
         ### for loggings
         with torch.no_grad():
-            dot_M_error = matrix_norm(dot_M_true - dot_M_approx, ord="fro").mean()
-            ABK_error = matrix_norm(ABK_true - ABK_approx, ord="fro").mean()
-            Bbot_error = matrix_norm(Bbot_true - Bbot_approx, ord="fro").mean()
+            dot_M_pos_eig, dot_M_neg_eig = self.get_matrix_eig(true_dict["dot_M_true"])
+            sym_MABK_pos_eig, sym_MABK_neg_eig = self.get_matrix_eig(
+                true_dict["sym_MABK_true"]
+            )
+            M_pos_eig, M_neg_eig = self.get_matrix_eig(M)
+
+            C_pos_eig, C_neg_eig = self.get_matrix_eig(C_u)
+            C1_pos_eig, C1_neg_eig = self.get_matrix_eig(C1)
+
+            dot_M_error = matrix_norm(
+                true_dict["dot_M_true"] - dot_M_approx, ord="fro"
+            ).mean()
+            ABK_error = matrix_norm(
+                true_dict["ABK_true"] - ABK_approx, ord="fro"
+            ).mean()
+            Bbot_error = matrix_norm(
+                true_dict["Bbot_true"] - Bbot_approx, ord="fro"
+            ).mean()
 
         return (
             loss,
@@ -889,28 +962,87 @@ class MRL_Approximation(Base):
                 "overshoot_loss": overshoot_loss.item(),
                 "c1_loss": c1_loss.item(),
                 "c2_loss": c2_loss.item(),
-                "C_eig_contraction": C_eig_contraction.item(),
-                "C1_eig_contraction": C1_eig_contraction.item(),
+                "C_pos_eig": C_pos_eig.item(),
+                "C_neg_eig": C_neg_eig.item(),
+                "C1_pos_eig": C1_pos_eig.item(),
+                "C1_neg_eig": C1_neg_eig.item(),
+                "dot_M_pos_eig": dot_M_pos_eig.item(),
+                "dot_M_neg_eig": dot_M_neg_eig.item(),
+                "sym_MABK_pos_eig": sym_MABK_pos_eig.item(),
+                "sym_MABK_neg_eig": sym_MABK_neg_eig.item(),
+                "M_pos_eig": M_pos_eig.item(),
+                "M_neg_eig": M_neg_eig.item(),
                 "dot_M_error": dot_M_error.item(),
                 "ABK_error": ABK_error.item(),
                 "Bbot_error": Bbot_error.item(),
             },
         )
 
+    def get_matrix_eig(self, A: torch.Tensor):
+        with torch.no_grad():
+            eigvals = torch.linalg.eigvalsh(A)  # (batch, dim), real symmetric
+            pos_eigvals = torch.relu(eigvals)
+            neg_eigvals = torch.relu(-eigvals)
+        return pos_eigvals.mean(dim=1).mean(), neg_eigvals.mean(dim=1).mean()
+
+    def update_params(self):
+        # soft update
+        for param_main, param_clone in zip(
+            self.actor.parameters(), self.cloned_actor.parameters()
+        ):
+            param_main.data.copy_(
+                (1.0 - self.tau) * param_main.data + self.tau * param_clone.data
+            )
+        for param_main, param_clone in zip(
+            self.critic.parameters(), self.cloned_critic.parameters()
+        ):
+            param_main.data.copy_(
+                (1.0 - self.tau) * param_main.data + self.tau * param_clone.data
+            )
+
+        self.cloned_actor = deepcopy(self.actor)
+        self.cloned_critic = deepcopy(self.critic)
+
+        self.ppo_optimizer = torch.optim.Adam(
+            [
+                {"params": self.cloned_actor.parameters(), "lr": self.actor_lr},
+                {"params": self.cloned_critic.parameters(), "lr": self.critic_lr},
+            ]
+        )
+
     def learn(self, batch):
-        detach = True if self.num_outer_update <= int(0.3 * self.nupdates) else False
+        if self.num_inner_update <= int(0.1 * self.nupdates):
+            self.learn_Dynamics(batch)
+            loss_dict = {}
+            timesteps = 0
+            update_time = 0
+            self.num_inner_update += 1
+        else:
+            detach = (
+                True if self.num_outer_update <= int(0.3 * self.nupdates) else False
+            )
 
-        loss_dict, timesteps, update_time = self.learn_ppo(batch)
-        if self.num_outer_update <= int(0.5 * self.nupdates):
-            D_loss_dict, D_update_time = self.learn_Dynamics(batch)
-            W_loss_dict, W_update_time = self.learn_W(batch, detach)
+            loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
-            loss_dict.update(D_loss_dict)
-            loss_dict.update(W_loss_dict)
-            update_time += D_update_time
-            update_time += W_update_time
+            if self.num_inner_update % 5 == 0:
+                W_loss_dict, W_update_time = self.learn_W(batch, detach)
+                D_loss_dict, D_update_time = self.learn_Dynamics(batch)
+                self.update_params()
 
-        self.num_outer_update += 1
+                loss_dict.update(W_loss_dict)
+                loss_dict.update(D_loss_dict)
+                update_time += W_update_time
+                update_time += D_update_time
+
+                self.num_outer_update += 1
+                self.W_lr_scheduler.step()
+                self.D_lr_scheduler.step()
+            else:
+                loss_dict = {}
+                timesteps = 0
+                update_time = 0
+
+            self.num_inner_update += 1
 
         return loss_dict, timesteps, update_time
 
@@ -925,14 +1057,14 @@ class MRL_Approximation(Base):
         states = to_tensor(batch["states"])
         actions = to_tensor(batch["actions"])
 
-        dot_x, _, _, _, f, B = self.get_true_metrics(states)
+        true_dict = self.get_true_metrics(states)
 
         x, _, _, _, _ = self.trim_state(states)
         f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
 
         dot_x_approx = f_approx + matmul(B_approx, actions.unsqueeze(-1)).squeeze(-1)
 
-        fB_loss = F.mse_loss(dot_x, dot_x_approx)
+        fB_loss = F.mse_loss(true_dict["dot_x_true"], dot_x_approx)
 
         ortho_loss = torch.mean(
             (matrix_norm(matmul(Bbot_approx.transpose(1, 2), B_approx.detach())))
@@ -940,19 +1072,19 @@ class MRL_Approximation(Base):
 
         loss = fB_loss + ortho_loss  # + adversarial_loss  # + cont_loss
         with torch.no_grad():
-            f_error = F.l1_loss(f, f_approx)
-            B_error = F.l1_loss(B, B_approx)
+            f_error = F.l1_loss(true_dict["f_true"], f_approx)
+            B_error = F.l1_loss(true_dict["B_true"], B_approx)
 
-        self.optimizer.zero_grad()
+        self.Dynamic_optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.Dynamic_func.parameters(), max_norm=5.0)
+        torch.nn.utils.clip_grad_norm_(self.Dynamic_func.parameters(), max_norm=10.0)
         grad_dict = self.compute_gradient_norm(
             [self.Dynamic_func],
             ["Dynamic_func"],
             dir=f"{self.name}",
             device=self.device,
         )
-        self.optimizer.step()
+        self.Dynamic_optimizer.step()
 
         norm_dict = self.compute_weight_norm(
             [self.Dynamic_func],
@@ -1006,16 +1138,16 @@ class MRL_Approximation(Base):
         # List to track actor loss over minibatches
         loss, infos = self.contraction_loss(states, next_states, terminals, detach)
 
-        self.optimizer.zero_grad()
+        self.W_optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.W_func.parameters(), max_norm=5.0)
+        torch.nn.utils.clip_grad_norm_(self.W_func.parameters(), max_norm=10.0)
         grad_dict = self.compute_gradient_norm(
             [self.W_func],
             ["W_func"],
             dir=f"{self.name}",
             device=self.device,
         )
-        self.optimizer.step()
+        self.W_optimizer.step()
 
         # Logging
         loss_dict = {
@@ -1024,15 +1156,19 @@ class MRL_Approximation(Base):
             f"{self.name}/W_loss/overshoot_loss": infos["overshoot_loss"],
             f"{self.name}/W_loss/c1_loss": infos["c1_loss"],
             f"{self.name}/W_loss/c2_loss": infos["c2_loss"],
-            f"{self.name}/Contraction_analytics/C_eig_contraction": infos[
-                "C_eig_contraction"
-            ],
-            f"{self.name}/Contraction_analytics/C1_eig_contraction": infos[
-                "C1_eig_contraction"
-            ],
-            f"{self.name}/Contraction_analytics/dot_M_error": infos["dot_M_error"],
-            f"{self.name}/Contraction_analytics/ABK_error": infos["ABK_error"],
-            f"{self.name}/Contraction_analytics/Bbot_error": infos["Bbot_error"],
+            f"{self.name}/C_analytics/C_pos_eig": infos["C_pos_eig"],
+            f"{self.name}/C_analytics/C_neg_eig": infos["C_neg_eig"],
+            f"{self.name}/C_analytics/C1_pos_eig": infos["C1_pos_eig"],
+            f"{self.name}/C_analytics/C1_neg_eig": infos["C1_neg_eig"],
+            f"{self.name}/C_analytics/dot_M_pos_eig": infos["dot_M_pos_eig"],
+            f"{self.name}/C_analytics/dot_M_neg_eig": infos["dot_M_neg_eig"],
+            f"{self.name}/C_analytics/sym_MABK_pos_eig": infos["sym_MABK_pos_eig"],
+            f"{self.name}/C_analytics/sym_MABK_neg_eig": infos["sym_MABK_neg_eig"],
+            f"{self.name}/C_analytics/M_pos_eig": infos["M_pos_eig"],
+            f"{self.name}/C_analytics/M_neg_eig": infos["M_neg_eig"],
+            f"{self.name}/C_analytics/dot_M_error": infos["dot_M_error"],
+            f"{self.name}/C_analytics/ABK_error": infos["ABK_error"],
+            f"{self.name}/C_analytics/Bbot_error": infos["Bbot_error"],
         }
         norm_dict = self.compute_weight_norm(
             [self.W_func],
@@ -1151,7 +1287,7 @@ class MRL_Approximation(Base):
                     break
 
                 # Update critic parameters
-                self.optimizer.zero_grad()
+                self.ppo_optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5)
                 grad_dict = self.compute_gradient_norm(
@@ -1161,7 +1297,7 @@ class MRL_Approximation(Base):
                     device=self.device,
                 )
                 grad_dicts.append(grad_dict)
-                self.optimizer.step()
+                self.ppo_optimizer.step()
 
             if kl_div.item() > self.target_kl:
                 break
@@ -1229,8 +1365,10 @@ class MRL_Approximation(Base):
 
     def get_rewards(self, states):
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
+        x = x.requires_grad_()
 
         with torch.no_grad():
+            ### Compute the main rewards
             W = self.W_func(x, xref, uref, x_trim, xref_trim)
             M = torch.inverse(W)
 
@@ -1238,6 +1376,43 @@ class MRL_Approximation(Base):
             errorT = transpose(error, 1, 2)
 
             rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
+
+        ### Compute the aux rewards ###
+        f = self.f_func(x).to(self.device)  # n, x_dim
+        B = self.B_func(x).to(self.device)  # n, x_dim, action
+
+        DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
+
+        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        K = self.Jacobian(u, x)  # n, f_dim, x_dim
+
+        u = u.detach()
+        K = K.detach()
+
+        A = DfDx + sum(
+            [
+                u[:, i].unsqueeze(-1).unsqueeze(-1) * DBDx[:, :, :, i]
+                for i in range(self.action_dim)
+            ]
+        )
+
+        ABK = A + matmul(B, K)
+        MABK = matmul(M, ABK)
+        sym_MABK = MABK + transpose(MABK, 1, 2)
+
+        C_u_only = -sym_MABK - self.eps * torch.eye(sym_MABK.shape[-1]).to(self.device)
+
+        aux_rewards = torch.linalg.eigvalsh(C_u_only).mean(dim=1).unsqueeze(-1)
+
+        pos_indices = aux_rewards > 0
+        neg_indices = aux_rewards <= 0
+
+        aux_rewards[pos_indices] = torch.tanh(aux_rewards[pos_indices] / 30)
+        aux_rewards[neg_indices] = -1.0
+
+        alpha = 0.5
+        rewards = alpha * rewards + (1 - alpha) * aux_rewards
 
         return rewards
 

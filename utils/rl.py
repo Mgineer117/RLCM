@@ -185,6 +185,7 @@ def get_policy(env, args):
                 x_dim=env.num_dim_x,
                 action_dim=args.action_dim,
                 hidden_dim=args.DynamicLearner_dim,
+                drop_out=0.2,
             )
             policy = C3M_Approximation(
                 x_dim=env.num_dim_x,
