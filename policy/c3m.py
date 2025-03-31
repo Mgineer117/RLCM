@@ -401,7 +401,7 @@ class C3M(Base):
         DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
 
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        u = self.u_func(x, xref, uref, x_trim, xref_trim)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
@@ -886,7 +886,7 @@ class C3M_Approximation(Base):
         DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
 
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        u = self.u_func(x, xref, uref, x_trim, xref_trim)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
