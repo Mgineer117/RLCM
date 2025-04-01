@@ -130,7 +130,7 @@ class MRL(Base):
             state = state.unsqueeze(0)
 
         x, xref, uref, x_trim, xref_trim = self.trim_state(state)
-        a, metaData = self.actor(
+        a, metaData = self.cloned_actor(
             x, xref, uref, x_trim, xref_trim, deterministic=deterministic
         )
 
@@ -158,7 +158,7 @@ class MRL(Base):
         DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
         Bbot = self.Bbot_func(x).to(self.device)  # n, x_dim, state - action dim
 
-        u, _ = self.cloned_actor(x, xref, uref, x_trim, xref_trim)
+        u, _ = self.cloned_actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
@@ -559,7 +559,7 @@ class MRL(Base):
         DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
 
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        u, _ = self.cloned_actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
@@ -707,7 +707,6 @@ class MRL_Approximation(Base):
         K: int = 5,
         nupdates: int = 0,
         dt: float = 0.03,
-        ABK_scheme: str = "local",
         device: str = "cpu",
     ):
         super(MRL_Approximation, self).__init__()
@@ -734,8 +733,6 @@ class MRL_Approximation(Base):
         self.eps_clip = eps_clip
         self.w_ub = w_ub
         self.dt = dt
-
-        self.ABK_scheme = ABK_scheme
 
         self.f_func = f_func
         self.B_func = B_func
@@ -766,20 +763,26 @@ class MRL_Approximation(Base):
         )
         self.ppo_optimizer = torch.optim.Adam(
             [
-                {"params": self.actor.parameters(), "lr": actor_lr},
-                {"params": self.critic.parameters(), "lr": critic_lr},
+                {"params": self.cloned_actor.parameters(), "lr": actor_lr},
+                {"params": self.cloned_critic.parameters(), "lr": critic_lr},
             ]
         )
 
         self.tau = 0.2  # for soft update of target networks
 
-        self.W_lr_scheduler = LambdaLR(self.W_optimizer, lr_lambda=self.lr_lambda)
-        self.D_lr_scheduler = LambdaLR(self.Dynamic_optimizer, lr_lambda=self.lr_lambda)
+        self.W_lr_scheduler = LambdaLR(self.W_optimizer, lr_lambda=self.W_lr_fn)
+        self.D_lr_scheduler = LambdaLR(self.Dynamic_optimizer, lr_lambda=self.D_lr_fn)
 
         #
         self.to(self.device)
 
-    def lr_lambda(self, step):
+    def W_lr_fn(self, step):
+        return 1.0 - float(step) / float(self.nupdates)
+
+    def D_lr_fn(self, step):
+        return 0.99**step
+
+    def PPO_lr_fn(self, step):
         return 1.0 - float(step) / float(self.nupdates)
 
     def to_device(self, device):
@@ -793,7 +796,7 @@ class MRL_Approximation(Base):
             state = state.unsqueeze(0)
 
         x, xref, uref, x_trim, xref_trim = self.trim_state(state)
-        a, metaData = self.actor(
+        a, metaData = self.cloned_actor(
             x, xref, uref, x_trim, xref_trim, deterministic=deterministic
         )
 
@@ -808,17 +811,18 @@ class MRL_Approximation(Base):
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
         x = x.requires_grad_()
 
-        W = self.W_func(x, xref, uref, x_trim, xref_trim)
-        M = inverse(W)
+        with torch.no_grad():
+            W = self.W_func(x, xref, uref, x_trim, xref_trim)
+            M = inverse(W)
 
         f = self.f_func(x).to(self.device)  # n, x_dim
         B = self.B_func(x).to(self.device)  # n, x_dim, action
 
-        DfDx = self.Jacobian(f, x)  # n, f_dim, x_dim
-        DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
-        Bbot = self.Bbot_func(x).to(self.device)  # n, x_dim, state - action dim
+        DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
+        Bbot = self.Bbot_func(x).detach().to(self.device)
 
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
+        u, _ = self.cloned_actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
@@ -839,20 +843,18 @@ class MRL_Approximation(Base):
         sym_MABK = MABK + transpose(MABK, 1, 2)
 
         return {
-            "dot_x_true": dot_x,
-            "dot_M_true": dot_M,
-            "ABK_true": ABK,
-            "sym_MABK_true": sym_MABK,
-            "Bbot_true": Bbot,
-            "f_true": f,
-            "B_true": B,
+            "dot_x_true": dot_x.detach(),
+            "dot_M_true": dot_M.detach(),
+            "ABK_true": ABK.detach(),
+            "sym_MABK_true": sym_MABK.detach(),
+            "Bbot_true": Bbot.detach(),
+            "f_true": f.detach(),
+            "B_true": B.detach(),
         }
 
     def contraction_loss(
         self,
         states: torch.Tensor,
-        next_states: torch.Tensor,
-        terminals: torch.Tensor,
         detach: bool,
     ):
         true_dict = self.get_true_metrics(states)
@@ -865,7 +867,9 @@ class MRL_Approximation(Base):
 
         f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
         # Bbot_approx = self.B_null(x).to(self.device)
-        Bbot_approx = self.compute_B_perp_batch(B_approx, self.x_dim - self.action_dim)
+        Bbot_approx = self.compute_B_perp_batch(
+            B_approx.detach(), self.x_dim - self.action_dim
+        )
 
         DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
@@ -874,7 +878,7 @@ class MRL_Approximation(Base):
         B_approx = B_approx.detach()
         Bbot_approx = Bbot_approx.detach()
 
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
+        u, _ = self.cloned_actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()
@@ -930,7 +934,6 @@ class MRL_Approximation(Base):
             -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
         )
         c2_loss = sum([C2.sum().mean() for C2 in C2s])
-        # c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
 
         loss = pd_loss + overshoot_loss + c1_loss + c2_loss
 
@@ -1012,21 +1015,20 @@ class MRL_Approximation(Base):
 
     def learn(self, batch):
         if self.num_inner_update <= int(0.1 * self.nupdates):
-            self.learn_Dynamics(batch)
-            loss_dict = {}
-            timesteps = 0
-            update_time = 0
+            loss_dict, update_time = self.learn_Dynamics(batch)
+            timesteps = batch["rewards"].shape[0]
             self.num_inner_update += 1
         else:
             detach = (
-                True if self.num_outer_update <= int(0.3 * self.nupdates) else False
+                True if self.num_outer_update <= int(0.4 * self.nupdates) else False
             )
 
             loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
-            if self.num_inner_update % 5 == 0:
-                W_loss_dict, W_update_time = self.learn_W(batch, detach)
+            if self.num_inner_update % 10 == 0:
                 D_loss_dict, D_update_time = self.learn_Dynamics(batch)
+                W_loss_dict, W_update_time = self.learn_W(batch, detach)
+
                 self.update_params()
 
                 loss_dict.update(W_loss_dict)
@@ -1062,9 +1064,13 @@ class MRL_Approximation(Base):
         x, _, _, _, _ = self.trim_state(states)
         f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
 
+        f = self.f_func(x).to(self.device)  # n, x_dim
+        B = self.B_func(x).to(self.device)  # n, x_dim, action
+
+        dot_x_true = f + matmul(B, actions.unsqueeze(-1)).squeeze(-1)
         dot_x_approx = f_approx + matmul(B_approx, actions.unsqueeze(-1)).squeeze(-1)
 
-        fB_loss = F.mse_loss(true_dict["dot_x_true"], dot_x_approx)
+        fB_loss = F.mse_loss(dot_x_true, dot_x_approx)
 
         ortho_loss = torch.mean(
             (matrix_norm(matmul(Bbot_approx.transpose(1, 2), B_approx.detach())))
@@ -1136,7 +1142,7 @@ class MRL_Approximation(Base):
         terminals = to_tensor(batch["terminals"])
 
         # List to track actor loss over minibatches
-        loss, infos = self.contraction_loss(states, next_states, terminals, detach)
+        loss, infos = self.contraction_loss(states, detach)
 
         self.W_optimizer.zero_grad()
         loss.backward()
@@ -1253,9 +1259,9 @@ class MRL_Approximation(Base):
 
                 # 2. actor Update
                 x, xref, uref, x_trim, xref_trim = self.trim_state(mb_states)
-                _, metaData = self.actor(x, xref, uref, x_trim, xref_trim)
-                logprobs = self.actor.log_prob(metaData["dist"], mb_actions)
-                entropy = self.actor.entropy(metaData["dist"])
+                _, metaData = self.cloned_actor(x, xref, uref, x_trim, xref_trim)
+                logprobs = self.cloned_actor.log_prob(metaData["dist"], mb_actions)
+                entropy = self.cloned_actor.entropy(metaData["dist"])
                 ratios = torch.exp(logprobs - mb_old_logprobs)
 
                 surr1 = ratios * mb_advantages
@@ -1291,7 +1297,7 @@ class MRL_Approximation(Base):
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=0.5)
                 grad_dict = self.compute_gradient_norm(
-                    [self.actor, self.critic],
+                    [self.cloned_actor, self.critic],
                     ["actor", "critic"],
                     dir=f"{self.name}",
                     device=self.device,
@@ -1316,7 +1322,7 @@ class MRL_Approximation(Base):
         }
         grad_dict = self.average_dict_values(grad_dicts)
         norm_dict = self.compute_weight_norm(
-            [self.actor, self.critic],
+            [self.cloned_actor, self.critic],
             ["actor", "critic"],
             dir=f"{self.name}",
             device=self.device,
@@ -1353,6 +1359,8 @@ class MRL_Approximation(Base):
             return torch.tensor(0.0).type(z.type()).requires_grad_()
 
     def trim_state(self, state: torch.Tensor):
+        # state = state.requires_grad_()
+
         # state trimming
         x = state[:, : self.x_dim]
         xref = state[:, self.x_dim : -self.action_dim]
@@ -1384,7 +1392,7 @@ class MRL_Approximation(Base):
         DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
 
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim)
+        u, _ = self.cloned_actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
 
         u = u.detach()

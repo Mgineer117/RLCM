@@ -39,10 +39,12 @@ def temp_seed(seed, pid):
     This is to introduce the stochacity in each multiprocessor.
     Without this, the samples from each multiprocessor will be same since the seed was fixed
     """
+    rand_int = random.randint(0, 1_000_000)  # create a random integer
+
     # Set the temporary seed
-    torch.manual_seed(seed + pid)
-    np.random.seed(seed + pid)
-    random.seed(seed + pid)
+    torch.manual_seed(seed + pid + rand_int)
+    np.random.seed(seed + pid + rand_int)
+    random.seed(seed + pid + rand_int)
 
 
 def setup_logger(args, unique_id, exp_time, seed):

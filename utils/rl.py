@@ -335,7 +335,6 @@ def get_policy(env, args):
             K=args.K_epochs,
             nupdates=nupdates,
             dt=env.dt,
-            ABK_scheme=args.ABK_scheme,
             device=args.device,
         )
 

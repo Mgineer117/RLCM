@@ -538,9 +538,6 @@ class C3M_Approximation(Base):
     def contraction_loss(
         self,
         states: torch.Tensor,
-        actions: torch.Tensor,
-        next_states: torch.Tensor,
-        terminals: torch.Tensor,
         detach: bool,
     ):
         true_dict = self.get_true_metrics(states)
@@ -669,28 +666,19 @@ class C3M_Approximation(Base):
         return pos_eigvals.mean(dim=1).mean(), neg_eigvals.mean(dim=1).mean()
 
     def learn(self, batch):
-        if self.num_inner_update <= int(0.1 * self.nupdates):
-            self.learn_Dynamics(batch)
-            loss_dict = {}
-            timesteps = 0
-            update_time = 0
-            self.num_inner_update += 1
-        else:
-            detach = (
-                True if self.num_outer_update <= int(0.3 * self.nupdates) else False
-            )
+        detach = True if self.num_outer_update <= int(0.3 * self.nupdates) else False
 
-            loss_dict, timesteps, update_time = self.learn_W(batch, detach)
-            D_loss_dict, D_update_time = self.learn_Dynamics(batch)
+        loss_dict, timesteps, update_time = self.learn_W(batch, detach)
+        D_loss_dict, D_update_time = self.learn_Dynamics(batch)
 
-            loss_dict.update(D_loss_dict)
-            update_time += D_update_time
+        loss_dict.update(D_loss_dict)
+        update_time += D_update_time
 
-            self.num_outer_update += 1
-            self.W_lr_scheduler.step()
-            self.D_lr_scheduler.step()
+        self.num_outer_update += 1
+        self.W_lr_scheduler.step()
+        self.D_lr_scheduler.step()
 
-            self.num_outer_update += 1
+        self.num_outer_update += 1
 
         return loss_dict, timesteps, update_time
 
@@ -710,9 +698,13 @@ class C3M_Approximation(Base):
         x, _, _, _, _ = self.trim_state(states)
         f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
 
+        f = self.f_func(x).to(self.device)  # n, x_dim
+        B = self.B_func(x).to(self.device)  # n, x_dim, action
+
+        dot_x_true = f + matmul(B, actions.unsqueeze(-1)).squeeze(-1)
         dot_x_approx = f_approx + matmul(B_approx, actions.unsqueeze(-1)).squeeze(-1)
 
-        fB_loss = F.mse_loss(true_dict["dot_x_true"], dot_x_approx)
+        fB_loss = F.mse_loss(dot_x_true, dot_x_approx)
         ortho_loss = torch.mean(
             (matrix_norm(matmul(Bbot_approx.transpose(1, 2), B_approx.detach())))
         )
@@ -774,9 +766,7 @@ class C3M_Approximation(Base):
         terminals = to_tensor(batch["terminals"])
 
         # List to track actor loss over minibatches
-        loss, infos = self.contraction_loss(
-            states, actions, next_states, terminals, detach
-        )
+        loss, infos = self.contraction_loss(states, detach)
 
         self.W_u_optimizer.zero_grad()
         loss.backward()
@@ -853,7 +843,7 @@ class C3M_Approximation(Base):
             return torch.tensor(0.0).type(z.type()).requires_grad_()
 
     def trim_state(self, state: torch.Tensor):
-        state = state.requires_grad_()
+        # state = state.requires_grad_()
 
         # state trimming
         x = state[:, : self.x_dim]
@@ -986,15 +976,16 @@ class C3M_Approximation(Base):
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
         x = x.requires_grad_()
 
-        W = self.W_func(x, xref, uref, x_trim, xref_trim)
-        M = inverse(W)
+        with torch.no_grad():
+            W = self.W_func(x, xref, uref, x_trim, xref_trim)
+            M = inverse(W)
 
         f = self.f_func(x).to(self.device)  # n, x_dim
         B = self.B_func(x).to(self.device)  # n, x_dim, action
 
-        DfDx = self.Jacobian(f, x)  # n, f_dim, x_dim
-        DBDx = self.B_Jacobian(B, x)  # n, x_dim, x_dim, b_dim
-        Bbot = self.Bbot_func(x).to(self.device)  # n, x_dim, state - action dim
+        DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
+        Bbot = self.Bbot_func(x).detach().to(self.device)
 
         u = self.u_func(x, xref, uref, x_trim, xref_trim)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
@@ -1009,7 +1000,7 @@ class C3M_Approximation(Base):
             ]
         )
 
-        dot_x = f + matmul(B, u.unsqueeze(-1)).squeeze(-1)
+        dot_x = (f + matmul(B, u.unsqueeze(-1)).squeeze(-1)).detach()
         dot_M = self.weighted_gradients(M, dot_x, x, True)
 
         ABK = A + matmul(B, K)
