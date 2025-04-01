@@ -259,7 +259,7 @@ class MRL(Base):
 
         loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
-        if self.num_inner_update % 5 == 0:
+        if self.num_inner_update % 20 == 0:
             W_loss_dict, W_update_time = self.learn_W(batch, detach)
             self.update_params()
 
@@ -584,8 +584,10 @@ class MRL(Base):
         pos_indices = aux_rewards > 0
         neg_indices = aux_rewards <= 0
 
-        aux_rewards[pos_indices] = torch.tanh(aux_rewards[pos_indices] / 30)
-        aux_rewards[neg_indices] = -1.0
+        aux_rewards = torch.tanh(aux_rewards / 30)
+
+        # aux_rewards[pos_indices] = torch.tanh(aux_rewards[pos_indices] / 30)
+        # aux_rewards[neg_indices] = -1.0
 
         alpha = 0.5
         rewards = alpha * rewards + (1 - alpha) * aux_rewards
@@ -1371,8 +1373,6 @@ class MRL_Approximation(Base):
             return torch.tensor(0.0).type(z.type()).requires_grad_()
 
     def trim_state(self, state: torch.Tensor):
-        # state = state.requires_grad_()
-
         # state trimming
         x = state[:, : self.x_dim]
         xref = state[:, self.x_dim : -self.action_dim]
