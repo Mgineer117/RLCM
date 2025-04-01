@@ -210,8 +210,8 @@ class MRL(Base):
         c1_loss = self.loss_pos_matrix_random_sampling(
             -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
         )
-        c2_loss = sum([C2.sum().mean() for C2 in C2s])
-        # c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
+        # c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
         overshoot_loss = self.loss_pos_matrix_random_sampling(
             self.w_ub * torch.eye(W.shape[-1]).to(self.device) - W
         )
@@ -255,7 +255,7 @@ class MRL(Base):
         return pos_eigvals.mean(dim=1).mean(), neg_eigvals.mean(dim=1).mean()
 
     def learn(self, batch):
-        detach = True if self.num_outer_update <= int(0.3 * self.nupdates) else False
+        detach = True if self.num_outer_update <= int(0.1 * self.nupdates) else False
 
         loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
@@ -551,6 +551,7 @@ class MRL(Base):
             errorT = transpose(error, 1, 2)
 
             rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
+            # rewards = (1 / (errorT @ error + 1)).squeeze(-1)
 
         ### Compute the aux rewards ###
         f = self.f_func(x).to(self.device)  # n, x_dim
@@ -933,7 +934,8 @@ class MRL_Approximation(Base):
         c1_loss = self.loss_pos_matrix_random_sampling(
             -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
         )
-        c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        # c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
 
         loss = pd_loss + overshoot_loss + c1_loss + c2_loss
 
@@ -1020,12 +1022,12 @@ class MRL_Approximation(Base):
             self.num_inner_update += 1
         else:
             detach = (
-                True if self.num_outer_update <= int(0.4 * self.nupdates) else False
+                True if self.num_outer_update <= int(0.2 * self.nupdates) else False
             )
 
             loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
-            if self.num_inner_update % 10 == 0:
+            if self.num_inner_update % 5 == 0:
                 D_loss_dict, D_update_time = self.learn_Dynamics(batch)
                 W_loss_dict, W_update_time = self.learn_W(batch, detach)
 
@@ -1105,6 +1107,9 @@ class MRL_Approximation(Base):
             # f"{self.name}/Dynamic_loss/adversarial_loss": adversarial_loss.item(),
             f"{self.name}/Dynamic_analytics/f_error": f_error.item(),
             f"{self.name}/Dynamic_analytics/B_error": B_error.item(),
+            f"{self.name}/learning_rate/D_lr": self.Dynamic_optimizer.param_groups[0][
+                "lr"
+            ],
         }
         loss_dict.update(grad_dict)
         loss_dict.update(norm_dict)
@@ -1175,6 +1180,7 @@ class MRL_Approximation(Base):
             f"{self.name}/C_analytics/dot_M_error": infos["dot_M_error"],
             f"{self.name}/C_analytics/ABK_error": infos["ABK_error"],
             f"{self.name}/C_analytics/Bbot_error": infos["Bbot_error"],
+            f"{self.name}/learning_rate/W_lr": self.W_optimizer.param_groups[0]["lr"],
         }
         norm_dict = self.compute_weight_norm(
             [self.W_func],
@@ -1319,6 +1325,12 @@ class MRL_Approximation(Base):
             f"{self.name}/analytics/K-epoch": k + 1,
             f"{self.name}/analytics/avg_rewards": torch.mean(original_rewards).item(),
             f"{self.name}/analytics/corrected_avg_rewards": torch.mean(rewards).item(),
+            f"{self.name}/learning_rate/actor_lr": self.ppo_optimizer.param_groups[0][
+                "lr"
+            ],
+            f"{self.name}/learning_rate/critic_lr": self.ppo_optimizer.param_groups[1][
+                "lr"
+            ],
         }
         grad_dict = self.average_dict_values(grad_dicts)
         norm_dict = self.compute_weight_norm(

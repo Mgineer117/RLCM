@@ -293,7 +293,8 @@ class C3M(Base):
         c1_loss = self.loss_pos_matrix_random_sampling(
             -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
         )
-        c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        # c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
         overshoot_loss = self.loss_pos_matrix_random_sampling(
             self.w_ub * torch.eye(W.shape[-1]).to(self.device) - W
         )
@@ -610,7 +611,8 @@ class C3M_Approximation(Base):
         c1_loss = self.loss_pos_matrix_random_sampling(
             -C1 - self.eps * torch.eye(C1.shape[-1]).to(self.device)
         )
-        c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        # c2_loss = sum([C2.sum().mean() for C2 in C2s])
+        c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
 
         loss = pd_loss + overshoot_loss + c1_loss + c2_loss
 

@@ -1,5 +1,5 @@
 {
-    "timesteps": 1e7,
+    "timesteps": 3e6,
     "log_interval": 100,
     "DynamicLearner_dim": [
         256,
@@ -11,7 +11,7 @@
     "w_ub": 10,
     "w_lb": 1e-1,
     "eps": 0.05,
-    "lbd": 1.0,
+    "lbd": 0.5,
     "num_minibatch": 4,
     "minibatch_size": 512,
     "eval_episodes": 10,
