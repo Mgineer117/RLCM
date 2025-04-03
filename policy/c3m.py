@@ -127,7 +127,7 @@ class C3M(Base):
         f_dim = f.shape[-1]
         x_dim = x.shape[-1]
 
-        J = torch.zeros(n, f_dim, x_dim).to(self.device)  # .to(x.type())
+        J = torch.zeros(n, f_dim, x_dim).to(self.device)
         for i in range(f_dim):
             J[:, i, :] = grad(f[:, i].sum(), x, create_graph=True)[0]  # [0]
         return J
@@ -188,7 +188,7 @@ class C3M(Base):
             negative_zTAz = zTAz[negative_index]
             return -1.0 * (negative_zTAz.mean())
         else:
-            return torch.tensor(0.0).type(z.type()).requires_grad_()
+            return torch.tensor(0.0).to(self.device).requires_grad_()
 
     def trim_state(self, state: torch.Tensor):
         # state trimming
@@ -852,7 +852,7 @@ class C3M_Approximation(Base):
             negative_zTAz = zTAz[negative_index]
             return -1.0 * (negative_zTAz.mean())
         else:
-            return torch.tensor(0.0).type(z.type()).requires_grad_()
+            return torch.tensor(0.0).to(self.device).requires_grad_()
 
     def trim_state(self, state: torch.Tensor):
         # state = state.requires_grad_()
@@ -940,7 +940,7 @@ class C3M_Approximation(Base):
         f_dim = f.shape[-1]
         x_dim = x.shape[-1]
 
-        J = torch.zeros(n, f_dim, x_dim).to(self.device)  # .to(x.type())
+        J = torch.zeros(n, f_dim, x_dim).to(self.device)
         for i in range(f_dim):
             J[:, i, :] = grad(f[:, i].sum(), x, create_graph=True)[0]  # [0]
         return J
