@@ -2,8 +2,8 @@
     "timesteps": 3e6,
     "log_interval": 100,
     "DynamicLearner_dim": [
-        128,
-        128
+        256,
+        256
     ],
     "W_lr": 1e-4,
     "Dynamic_lr": 1e-3,

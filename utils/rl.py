@@ -337,5 +337,141 @@ def get_policy(env, args):
             dt=env.dt,
             device=args.device,
         )
+    elif algo_name in ("cmrl"):  # , "cmrl-approx"):
+        from policy.cmrl import CMRL
+        from policy.layers.c3m_networks import C3M_W, C3M_U
+        from policy.layers.ppo_networks import PPO_Actor, PPO_Critic
+
+        # from policy.layers.dynamic_networks import DynamicLearner
+
+        # this was not discussed in paper nut implemented by c3m author
+        effective_indices = env.effective_indices
+
+        W_func = C3M_W(
+            x_dim=env.num_dim_x,
+            state_dim=args.state_dim,
+            effective_indices=effective_indices,
+            action_dim=args.action_dim,
+            w_lb=args.w_lb,
+            task=args.task,
+        )
+
+        u_func = C3M_U(
+            x_dim=env.num_dim_x,
+            state_dim=args.state_dim,
+            effective_indices=effective_indices,
+            action_dim=args.action_dim,
+            task=args.task,
+        )
+
+        # Dynamic_func = DynamicLearner(
+        #     x_dim=env.num_dim_x,
+        #     action_dim=args.action_dim,
+        #     hidden_dim=args.DynamicLearner_dim,
+        #     activation=nn.LeakyReLU(),
+        #     drop_out=0.2,
+        # )
+
+        actor = PPO_Actor(
+            args.state_dim,
+            hidden_dim=args.actor_dim,
+            a_dim=args.action_dim,
+        )
+
+        critic = PPO_Critic(args.state_dim, hidden_dim=args.critic_dim)
+
+        policy = CMRL(
+            x_dim=env.num_dim_x,
+            effective_indices=effective_indices,
+            W_func=W_func,
+            u_func=u_func,
+            f_func=env.f_func,
+            B_func=env.B_func,
+            Bbot_func=env.Bbot_func,
+            actor=actor,
+            critic=critic,
+            W_lr=args.W_lr,
+            u_lr=args.u_lr,
+            actor_lr=args.actor_lr,
+            critic_lr=args.critic_lr,
+            num_minibatch=args.num_minibatch,
+            minibatch_size=args.minibatch_size,
+            w_ub=args.w_ub,
+            lbd=args.lbd,
+            eps=args.eps,
+            eps_clip=args.eps_clip,
+            entropy_scaler=args.entropy_scaler,
+            target_kl=args.target_kl,
+            gamma=args.gamma,
+            gae=args.gae,
+            K=args.K_epochs,
+            nupdates=nupdates,
+            dt=env.dt,
+            device=args.device,
+        )
+
+    elif algo_name == "mrl-ensemble":
+        from policy.mrl_ensemble import MRL_Ensemble
+        from policy.layers.c3m_networks import C3M_W
+        from policy.layers.ppo_networks import PPO_Actor, PPO_Critic
+        from policy.layers.dynamic_networks import DynamicLearner
+
+        # this was not discussed in paper nut implemented by c3m author
+        effective_indices = env.effective_indices
+
+        W_func = C3M_W(
+            x_dim=env.num_dim_x,
+            state_dim=args.state_dim,
+            effective_indices=effective_indices,
+            action_dim=args.action_dim,
+            w_lb=args.w_lb,
+            task=args.task,
+        )
+
+        Dynamic_func = DynamicLearner(
+            x_dim=env.num_dim_x,
+            action_dim=args.action_dim,
+            hidden_dim=args.DynamicLearner_dim,
+            activation=nn.LeakyReLU(),
+            drop_out=0.2,
+        )
+
+        actor = PPO_Actor(
+            args.state_dim,
+            hidden_dim=args.actor_dim,
+            a_dim=args.action_dim,
+        )
+
+        critic = PPO_Critic(args.state_dim, hidden_dim=args.critic_dim)
+
+        policy = MRL_Ensemble(
+            x_dim=env.num_dim_x,
+            effective_indices=effective_indices,
+            W_func=W_func,
+            Dynamic_func=Dynamic_func,
+            f_func=env.f_func,
+            B_func=env.B_func,
+            Bbot_func=env.Bbot_func,
+            actor=actor,
+            critic=critic,
+            W_lr=args.W_lr,
+            Dynamic_lr=args.Dynamic_lr,
+            actor_lr=args.actor_lr,
+            critic_lr=args.critic_lr,
+            num_minibatch=args.num_minibatch,
+            minibatch_size=args.minibatch_size,
+            w_ub=args.w_ub,
+            lbd=args.lbd,
+            eps=args.eps,
+            eps_clip=args.eps_clip,
+            entropy_scaler=args.entropy_scaler,
+            target_kl=args.target_kl,
+            gamma=args.gamma,
+            gae=args.gae,
+            K=args.K_epochs,
+            nupdates=nupdates,
+            dt=env.dt,
+            device=args.device,
+        )
 
     return policy

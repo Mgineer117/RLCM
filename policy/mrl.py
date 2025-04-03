@@ -259,7 +259,7 @@ class MRL(Base):
 
         loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
-        if self.num_inner_update % 20 == 0:
+        if self.num_inner_update % 10 == 0:
             W_loss_dict, W_update_time = self.learn_W(batch, detach)
             self.update_params()
 
@@ -584,10 +584,10 @@ class MRL(Base):
         pos_indices = aux_rewards > 0
         neg_indices = aux_rewards <= 0
 
-        aux_rewards = torch.tanh(aux_rewards / 30)
+        aux_rewards[pos_indices] = torch.tanh(aux_rewards[pos_indices] / 30)
+        aux_rewards[neg_indices] = -1.0
 
-        # aux_rewards[pos_indices] = torch.tanh(aux_rewards[pos_indices] / 30)
-        # aux_rewards[neg_indices] = -1.0
+        # aux_rewards = torch.tanh(aux_rewards / 30)
 
         alpha = 0.5
         rewards = alpha * rewards + (1 - alpha) * aux_rewards
@@ -1020,7 +1020,10 @@ class MRL_Approximation(Base):
     def learn(self, batch):
         if self.num_inner_update <= int(0.1 * self.nupdates):
             loss_dict, update_time = self.learn_Dynamics(batch)
-            timesteps = batch["rewards"].shape[0]
+            loss_dict = {}
+            timesteps = 0
+            update_time = 0
+            # timesteps = batch["rewards"].shape[0]
             self.num_inner_update += 1
         else:
             detach = (
@@ -1029,7 +1032,7 @@ class MRL_Approximation(Base):
 
             loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
-            if self.num_inner_update % 5 == 0:
+            if self.num_inner_update % 10 == 0:
                 D_loss_dict, D_update_time = self.learn_Dynamics(batch)
                 W_loss_dict, W_update_time = self.learn_W(batch, detach)
 
@@ -1398,11 +1401,16 @@ class MRL_Approximation(Base):
             rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
 
         ### Compute the aux rewards ###
-        f = self.f_func(x).to(self.device)  # n, x_dim
-        B = self.B_func(x).to(self.device)  # n, x_dim, action
+        f_approx, B_approx, _ = self.Dynamic_func(x)
 
-        DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
-        DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
+        DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
+
+        f_approx = f_approx.detach()
+        B_approx = B_approx.detach()
+
+        DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
 
         u, _ = self.cloned_actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
         K = self.Jacobian(u, x)  # n, f_dim, x_dim
@@ -1417,7 +1425,7 @@ class MRL_Approximation(Base):
             ]
         )
 
-        ABK = A + matmul(B, K)
+        ABK = A + matmul(B_approx, K)
         MABK = matmul(M, ABK)
         sym_MABK = MABK + transpose(MABK, 1, 2)
 
