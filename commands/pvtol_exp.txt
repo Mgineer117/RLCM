@@ -1,6 +1,6 @@
-nohup python3 main.py --project RLCM --task pvtol --algo-name ppo --gpu-idx 3 &
-nohup python3 main.py --project RLCM --task pvtol --algo-name mrl --gpu-idx 3 &
-nohup python3 main.py --project RLCM --task pvtol --algo-name mrl-approx --gpu-idx 3 &
-nohup python3 main.py --project RLCM --task pvtol --algo-name mrl-ensemble --gpu-idx 3 &
-nohup python3 main.py --project RLCM --task pvtol --algo-name c3m --gpu-idx 3 &
-nohup python3 main.py --project RLCM --task pvtol --algo-name c3m-approx --gpu-idx 3 &
+nohup python3 main.py --project RLCM --task pvtol --algo-name ppo &
+nohup python3 main.py --project RLCM --task pvtol --algo-name mrl &
+nohup python3 main.py --project RLCM --task pvtol --algo-name mrl-approx &
+nohup python3 main.py --project RLCM --task pvtol --algo-name mrl-ensemble &
+nohup python3 main.py --project RLCM --task pvtol --algo-name c3m &
+nohup python3 main.py --project RLCM --task pvtol --algo-name c3m-approx &
