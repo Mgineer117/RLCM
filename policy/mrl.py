@@ -219,7 +219,7 @@ class MRL(Base):
         )
 
         ############# entropy loss ################
-        alpha = 1e-1
+        alpha = 3e-1
         mean_penalty = torch.exp(-rewards.mean())
         mean_entropy = infos["entropy"].mean()
 
@@ -886,10 +886,10 @@ class MRL_Approximation(Base):
         M = inverse(W)
 
         f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
-        Bbot_approx = self.B_null(x).to(self.device)
-        # Bbot_approx = self.compute_B_perp_batch(
-        #     B_approx.detach(), self.x_dim - self.action_dim
-        # )
+        # Bbot_approx = self.B_null(x).to(self.device)
+        Bbot_approx = self.compute_B_perp_batch(
+            B_approx.detach(), self.x_dim - self.action_dim
+        )
 
         DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
@@ -957,7 +957,7 @@ class MRL_Approximation(Base):
         c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
 
         ############# entropy loss ################
-        alpha = 1e-1
+        alpha = 3e-1
         mean_penalty = torch.exp(-rewards.mean())
         mean_entropy = infos["entropy"].mean()
 
