@@ -279,11 +279,14 @@ class MRL_Ensemble(Base):
     def learn(self, batch):
         if self.num_inner_update <= int(0.1 * self.nupdates):
             loss_dict, update_time = self.learn_Dynamics(batch)
-            timesteps = batch["rewards"].shape[0]
+            loss_dict = {}
+            timesteps = 0
+            update_time = 0
+            # timesteps = batch["rewards"].shape[0]
             self.num_inner_update += 1
         else:
             detach = (
-                True if self.num_outer_update <= int(0.2 * self.nupdates) else False
+                True if self.num_outer_update <= int(0.1 * self.nupdates) else False
             )
 
             loss_dict, timesteps, update_time = self.learn_ppo(batch)

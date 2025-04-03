@@ -1,5 +1,5 @@
 {
-    "timesteps": 5e6,
+    "timesteps": 3e6,
     "log_interval": 100,
     "DynamicLearner_dim": [
         256,
@@ -15,7 +15,7 @@
     "lbd": 1.0,
     "eps_clip": 0.2,
     "K_epochs": 10,
-    "target_kl": 0.01,
+    "target_kl": 0.03,
     "actor_dim": [
         64,
         64

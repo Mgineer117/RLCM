@@ -5,7 +5,7 @@
     "critic_lr": 1e-3,
     "eps_clip": 0.2,
     "K_epochs": 10,
-    "target_kl": 0.01,
+    "target_kl": 0.03,
     "actor_dim": [
         64,
         64
@@ -17,7 +17,6 @@
     "num_minibatch": 4,
     "minibatch_size": 512,
     "entropy_scaler": 1e-2,
-    "scheduler": "lambda",
     "eval_episodes": 10,
     "sigma": 0.0,
     "gamma": 0.99

@@ -10,7 +10,7 @@
     "lbd": 0.5,
     "eps_clip": 0.2,
     "K_epochs": 5,
-    "target_kl": 0.01,
+    "target_kl": 0.03,
     "actor_dim": [
         64,
         64
@@ -20,7 +20,7 @@
         128
     ],
     "num_minibatch": 4,
-    "minibatch_size": 512,
+    "minibatch_size": 256,
     "entropy_scaler": 1e-2,
     "eval_episodes": 10,
     "sigma": 0.0,

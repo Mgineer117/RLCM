@@ -5,7 +5,7 @@
     "critic_lr": 1e-3,
     "eps_clip": 0.2,
     "K_epochs": 10,
-    "target_kl": 0.01,
+    "target_kl": 0.03,
     "actor_dim": [
         64,
         64

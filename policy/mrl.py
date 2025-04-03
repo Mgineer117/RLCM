@@ -1027,7 +1027,7 @@ class MRL_Approximation(Base):
             self.num_inner_update += 1
         else:
             detach = (
-                True if self.num_outer_update <= int(0.2 * self.nupdates) else False
+                True if self.num_outer_update <= int(0.1 * self.nupdates) else False
             )
 
             loss_dict, timesteps, update_time = self.learn_ppo(batch)

@@ -213,7 +213,7 @@ class C3M(Base):
         self.train()
         t0 = time.time()
 
-        detach = True if self.current_update <= int(0.3 * self.nupdates) else False
+        detach = True if self.current_update <= int(0.1 * self.nupdates) else False
 
         # Ingredients: Convert batch data to tensors
         def to_tensor(data):
@@ -668,19 +668,29 @@ class C3M_Approximation(Base):
         return pos_eigvals.mean(dim=1).mean(), neg_eigvals.mean(dim=1).mean()
 
     def learn(self, batch):
-        detach = True if self.num_outer_update <= int(0.3 * self.nupdates) else False
+        if self.num_inner_update <= int(0.1 * self.nupdates):
+            loss_dict, update_time = self.learn_Dynamics(batch)
+            loss_dict = {}
+            timesteps = 0
+            update_time = 0
+            # timesteps = batch["rewards"].shape[0]
+            self.num_inner_update += 1
+        else:
+            detach = (
+                True if self.num_outer_update <= int(0.1 * self.nupdates) else False
+            )
 
-        loss_dict, timesteps, update_time = self.learn_W(batch, detach)
-        D_loss_dict, D_update_time = self.learn_Dynamics(batch)
+            loss_dict, timesteps, update_time = self.learn_W(batch, detach)
+            D_loss_dict, D_update_time = self.learn_Dynamics(batch)
 
-        loss_dict.update(D_loss_dict)
-        update_time += D_update_time
+            loss_dict.update(D_loss_dict)
+            update_time += D_update_time
 
-        self.num_outer_update += 1
-        self.W_lr_scheduler.step()
-        self.D_lr_scheduler.step()
+            self.num_outer_update += 1
+            self.W_lr_scheduler.step()
+            self.D_lr_scheduler.step()
 
-        self.num_outer_update += 1
+            self.num_outer_update += 1
 
         return loss_dict, timesteps, update_time
 

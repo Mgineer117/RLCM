@@ -1,5 +1,5 @@
 {
-    "timesteps": 5e6,
+    "timesteps": 3e6,
     "log_interval": 100,
     "W_lr": 1e-3,
     "u_lr": 1e-3,
@@ -9,7 +9,6 @@
     "lbd": 0.5,
     "num_minibatch": 4,
     "minibatch_size": 256,
-    "scheduler": "lambda",
     "eval_episodes": 10,
     "sigma": 0.0
 }
