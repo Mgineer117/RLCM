@@ -55,6 +55,7 @@ class C3M_W(nn.Module):
         action_dim: int,
         w_lb: float,
         task: str,
+        device: str = "cpu",
     ):
         super(C3M_W, self).__init__()
 
@@ -63,6 +64,8 @@ class C3M_W(nn.Module):
         self.effective_x_dim = len(effective_indices)
         self.effective_indices = effective_indices
         self.action_dim = action_dim
+
+        self.device = device
 
         self.w_lb = w_lb
 
@@ -86,7 +89,7 @@ class C3M_W(nn.Module):
             n = x_trim.shape[0]
 
             W = self.model_W(x_trim).view(n, self.x_dim, self.x_dim)
-            Wbot = self.model_Wbot(torch.ones(n, 1).type(x_trim.type())).view(
+            Wbot = self.model_Wbot(torch.ones(n, 1).to(self.device)).view(
                 n, self.x_dim - self.action_dim, self.x_dim - self.action_dim
             )
             W[
@@ -101,9 +104,9 @@ class C3M_W(nn.Module):
             ] = 0
 
             W = W.transpose(1, 2).matmul(W)
-            W = W + self.w_lb * torch.eye(self.x_dim).view(
+            W = W + self.w_lb * torch.eye(self.x_dim).to(self.device).view(
                 1, self.x_dim, self.x_dim
-            ).type(x_trim.type())
+            )
         elif self.task == "neurallander":
             n = x_trim.shape[0]
 
@@ -123,18 +126,18 @@ class C3M_W(nn.Module):
             ] = 0
 
             W = W.transpose(1, 2).matmul(W)
-            W = W + self.w_lb * torch.eye(self.x_dim).view(
+            W = W + self.w_lb * torch.eye(self.x_dim).to(self.device).view(
                 1, self.x_dim, self.x_dim
-            ).type(x_trim.type())
+            )
         elif self.task in ("pvtol", "segway"):
             n = x_trim.shape[0]
 
             W = self.model_W(x_trim).view(n, self.x_dim, self.x_dim)
 
             W = W.transpose(1, 2).matmul(W)
-            W = W + self.w_lb * torch.eye(self.x_dim).view(
+            W = W + self.w_lb * torch.eye(self.x_dim).to(self.device).view(
                 1, self.x_dim, self.x_dim
-            ).type(x_trim.type())
+            )
         elif self.task == "quadrotor":
             n = x_trim.shape[0]
 
@@ -154,9 +157,9 @@ class C3M_W(nn.Module):
             ] = 0
 
             W = W.transpose(1, 2).matmul(W)
-            W = W + self.w_lb * torch.eye(self.x_dim).view(
+            W = W + self.w_lb * torch.eye(self.x_dim).to(self.device).view(
                 1, self.x_dim, self.x_dim
-            ).type(x_trim.type())
+            )
         return W
 
 

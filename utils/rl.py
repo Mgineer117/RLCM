@@ -154,6 +154,7 @@ def get_policy(env, args):
             action_dim=args.action_dim,
             w_lb=args.w_lb,
             task=args.task,
+            device=args.device,
         )
         u_func = C3M_U(
             x_dim=env.num_dim_x,
@@ -221,6 +222,7 @@ def get_policy(env, args):
             action_dim=args.action_dim,
             w_lb=args.w_lb,
             task=args.task,
+            device=args.device,
         )
 
         if algo_name == "mrl":
@@ -282,6 +284,7 @@ def get_policy(env, args):
             action_dim=args.action_dim,
             w_lb=args.w_lb,
             task=args.task,
+            device=args.device,
         )
 
         Dynamic_func = DynamicLearner(
@@ -354,6 +357,7 @@ def get_policy(env, args):
             action_dim=args.action_dim,
             w_lb=args.w_lb,
             task=args.task,
+            device=args.device,
         )
 
         u_func = C3M_U(
@@ -426,6 +430,7 @@ def get_policy(env, args):
             action_dim=args.action_dim,
             w_lb=args.w_lb,
             task=args.task,
+            device=args.device,
         )
 
         Dynamic_func = DynamicLearner(
