@@ -13,7 +13,7 @@ from typing import Callable
 from copy import deepcopy
 
 # from utils.torch import get_flat_grad_from, get_flat_params_from, set_flat_params_to
-from utils.rl import estimate_advantages
+from utils.functions import estimate_advantages
 
 # from actor.layers.building_blocks import MLP
 from policy.base import Base

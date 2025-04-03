@@ -5,7 +5,7 @@ import wandb
 import datetime
 
 from utils.get_args import get_args
-from utils.rl import call_env, get_policy
+from utils.utils import call_env, get_policy
 from utils.misc import (
     seed_all,
     setup_logger,
