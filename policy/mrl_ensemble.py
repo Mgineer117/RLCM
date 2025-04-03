@@ -137,7 +137,7 @@ class MRL_Ensemble(Base):
         return 1.0 - float(step) / float(self.nupdates)
 
     def D_lr_fn(self, step):
-        return 0.99**step
+        return 0.999**step
 
     def to_device(self, device):
         self.device = device

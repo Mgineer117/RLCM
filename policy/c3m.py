@@ -507,15 +507,18 @@ class C3M_Approximation(Base):
             params=self.Dynamic_func.parameters(), lr=Dynamic_lr
         )
 
-        self.W_lr_scheduler = LambdaLR(self.W_u_optimizer, lr_lambda=self.lr_lambda)
-        self.D_lr_scheduler = LambdaLR(self.Dynamic_optimizer, lr_lambda=self.lr_lambda)
+        self.W_lr_scheduler = LambdaLR(self.W_u_optimizer, lr_lambda=self.W_lr_fn)
+        self.D_lr_scheduler = LambdaLR(self.Dynamic_optimizer, lr_lambda=self.D_lr_fn)
 
         #
         self.dummy = torch.tensor(1e-5)
         self.to(self.device)
 
-    def lr_lambda(self, step):
+    def W_lr_fn(self, step):
         return 1.0 - float(step) / float(self.nupdates)
+
+    def D_lr_fn(self, step):
+        return 0.999**step
 
     def to_device(self, device):
         self.device = device
