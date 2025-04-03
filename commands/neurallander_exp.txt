@@ -1,0 +1,6 @@
+nohup python3 main.py --project RLCM --task neurallander --algo-name ppo &
+nohup python3 main.py --project RLCM --task neurallander --algo-name mrl &
+nohup python3 main.py --project RLCM --task neurallander --algo-name mrl-approx &
+nohup python3 main.py --project RLCM --task neurallander --algo-name mrl-ensemble &
+nohup python3 main.py --project RLCM --task neurallander --algo-name c3m &
+nohup python3 main.py --project RLCM --task neurallander --algo-name c3m-approx &
