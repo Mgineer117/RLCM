@@ -109,7 +109,7 @@ class MRL(Base):
             ]
         )
 
-        self.tau = 0.2  # for soft update of target networks
+        self.tau = 0.5  # for soft update of target networks
 
         self.lr_scheduler = LambdaLR(self.W_optimizer, lr_lambda=self.lr_lambda)
 
@@ -259,7 +259,7 @@ class MRL(Base):
 
         loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
-        if self.num_inner_update % 10 == 0:
+        if self.num_inner_update % 5 == 0:
             W_loss_dict, W_update_time = self.learn_W(batch, detach)
             self.update_params()
 
@@ -771,7 +771,7 @@ class MRL_Approximation(Base):
             ]
         )
 
-        self.tau = 0.2  # for soft update of target networks
+        self.tau = 0.5  # for soft update of target networks
 
         self.W_lr_scheduler = LambdaLR(self.W_optimizer, lr_lambda=self.W_lr_fn)
         self.D_lr_scheduler = LambdaLR(self.Dynamic_optimizer, lr_lambda=self.D_lr_fn)
@@ -1032,7 +1032,7 @@ class MRL_Approximation(Base):
 
             loss_dict, timesteps, update_time = self.learn_ppo(batch)
 
-            if self.num_inner_update % 10 == 0:
+            if self.num_inner_update % 5 == 0:
                 D_loss_dict, D_update_time = self.learn_Dynamics(batch)
                 W_loss_dict, W_update_time = self.learn_W(batch, detach)
 

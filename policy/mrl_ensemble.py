@@ -125,7 +125,7 @@ class MRL_Ensemble(Base):
             ]
         )
 
-        self.tau = 0.2  # for soft update of target networks
+        self.tau = 0.5  # for soft update of target networks
 
         self.W_lr_scheduler = LambdaLR(self.W_optimizer, lr_lambda=self.W_lr_fn)
         self.D_lr_scheduler = LambdaLR(self.Dynamic_optimizer, lr_lambda=self.D_lr_fn)
@@ -631,7 +631,7 @@ class MRL_Ensemble(Base):
         update_time = time.time() - t0
         return loss_dict, timesteps, update_time
 
-    def perturb_eigenvalues(self, A: torch.Tensor, scale=0.1, mode="increase"):
+    def perturb_eigenvalues(self, A: torch.Tensor, scale=0.2, mode="increase"):
         if mode == "none":
             return A
 
