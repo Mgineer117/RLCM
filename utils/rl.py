@@ -211,17 +211,24 @@ def get_policy(env, args):
 
     elif algo_name in ("mrl", "mrl-manual"):
         from policy.mrl import MRL
-        from policy.layers.c3m_networks import C3M_W
+        from policy.layers.c3m_networks import C3M_W, C3M_W_Gaussian
         from policy.layers.ppo_networks import Manual_PPO_Actor, PPO_Actor, PPO_Critic
 
         # this was not discussed in paper nut implemented by c3m author
-        W_func = C3M_W(
+        # W_func = C3M_W(
+        #     x_dim=env.num_dim_x,
+        #     state_dim=args.state_dim,
+        #     effective_indices=effective_indices,
+        #     action_dim=args.action_dim,
+        #     w_lb=args.w_lb,
+        #     task=args.task,
+        #     device=args.device,
+        # )
+        W_func = C3M_W_Gaussian(
             x_dim=env.num_dim_x,
             state_dim=args.state_dim,
-            effective_indices=effective_indices,
-            action_dim=args.action_dim,
+            hidden_dim=[128, 128],
             w_lb=args.w_lb,
-            task=args.task,
             device=args.device,
         )
 
@@ -270,20 +277,28 @@ def get_policy(env, args):
         )
     elif algo_name in ("mrl-approx", "mrl-approx-manual"):
         from policy.mrl import MRL_Approximation
-        from policy.layers.c3m_networks import C3M_W
+        from policy.layers.c3m_networks import C3M_W_Gaussian
         from policy.layers.ppo_networks import Manual_PPO_Actor, PPO_Actor, PPO_Critic
         from policy.layers.dynamic_networks import DynamicLearner
 
         # this was not discussed in paper nut implemented by c3m author
         effective_indices = env.effective_indices
 
-        W_func = C3M_W(
+        # W_func = C3M_W(
+        #     x_dim=env.num_dim_x,
+        #     state_dim=args.state_dim,
+        #     effective_indices=effective_indices,
+        #     action_dim=args.action_dim,
+        #     w_lb=args.w_lb,
+        #     task=args.task,
+        #     device=args.device,
+        # )
+
+        W_func = C3M_W_Gaussian(
             x_dim=env.num_dim_x,
             state_dim=args.state_dim,
-            effective_indices=effective_indices,
-            action_dim=args.action_dim,
+            hidden_dim=[128, 128],
             w_lb=args.w_lb,
-            task=args.task,
             device=args.device,
         )
 

@@ -42,6 +42,94 @@ def get_W_model(task, x_dim, effective_x_dim, action_dim):
     return model_W, model_Wbot
 
 
+class C3M_W_Gaussian(nn.Module):
+    """
+    Psi Advantage Function: Psi(s,a) - (1/|A|)SUM_a' Psi(s, a')
+    """
+
+    def __init__(
+        self,
+        x_dim: int,
+        state_dim: int,
+        hidden_dim: list,
+        w_lb: float,
+        activation: nn.Module = nn.Tanh(),
+        device: str = "cpu",
+    ):
+        super(C3M_W_Gaussian, self).__init__()
+
+        self.x_dim = x_dim
+        self.state_dim = state_dim
+
+        self.device = device
+
+        self.w_lb = w_lb
+
+        self.model = MLP(
+            input_dim=state_dim, hidden_dims=hidden_dim, activation=activation
+        )
+        self.mu = nn.Linear(hidden_dim[-1], x_dim**2, bias=True)
+        self.logstd = nn.Linear(hidden_dim[-1], x_dim**2, bias=True)
+        nn.init.constant_(self.logstd.bias, 0.0)
+
+    def forward(
+        self,
+        states: torch.Tensor,
+        deterministic: bool = False,
+    ):
+        n = states.shape[0]
+        logits = self.model(states)  # .view(n, self.x_dim, self.x_dim)
+        mu = self.mu(logits)  # .view(n, self.x_dim, self.x_dim)
+        logstd = self.logstd(logits).clamp(min=-1, max=2)
+        var = torch.exp(logstd) ** 2
+        # clip var such that entropy is positive always
+
+        if deterministic:
+            W = mu  # .view(n, self.x_dim, self.x_dim)
+            dist = None
+            logprobs = torch.zeros_like(mu[:, 0:1])
+            probs = torch.ones_like(logprobs)  # log(1) = 0
+            entropy = torch.zeros_like(logprobs)
+        else:
+            covariance_matrix = torch.diag_embed(var)  # Variance is std^2
+            dist = MultivariateNormal(loc=mu, covariance_matrix=covariance_matrix)
+
+            W = dist.rsample()  # .view(n, self.x_dim, self.x_dim)
+
+            logprobs = dist.log_prob(W).unsqueeze(-1)
+            probs = torch.exp(logprobs)
+            entropy = dist.entropy()
+
+            # print(logstd, entropy)
+
+        W = W.view(n, self.x_dim, self.x_dim)
+        W = W.transpose(1, 2).matmul(W)
+        W = W + self.w_lb * torch.eye(self.x_dim).to(self.device).view(
+            1, self.x_dim, self.x_dim
+        )
+
+        return W, {
+            "dist": dist,
+            "probs": probs,
+            "logprobs": logprobs,
+            "entropy": entropy,
+        }
+
+    def log_prob(self, dist: torch.distributions, W: torch.Tensor):
+        """
+        Actions must be tensor
+        """
+        W = W.view(W.shape[0], -1)
+        logprobs = dist.log_prob(W).unsqueeze(-1)
+        return logprobs
+
+    def entropy(self, dist: torch.distributions):
+        """
+        For code consistency
+        """
+        return dist.entropy().unsqueeze(-1)
+
+
 class C3M_W(nn.Module):
     """
     Psi Advantage Function: Psi(s,a) - (1/|A|)SUM_a' Psi(s, a')

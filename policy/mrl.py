@@ -143,12 +143,14 @@ class MRL(Base):
     def contraction_loss(
         self,
         states: torch.Tensor,
+        rewards: torch.Tensor,
         detach: bool,
     ):
+        states = states.requires_grad_()
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-        x = x.requires_grad_()
+        # x = x.requires_grad_()
 
-        W = self.W_func(x, xref, uref, x_trim, xref_trim)
+        W, infos = self.W_func(states)
         M = inverse(W)
 
         f = self.f_func(x).to(self.device)  # n, x_dim
@@ -216,7 +218,14 @@ class MRL(Base):
             self.w_ub * torch.eye(W.shape[-1]).to(self.device) - W
         )
 
-        loss = pd_loss + c1_loss + c2_loss + overshoot_loss
+        ############# entropy loss ################
+        alpha = 1e-1
+        mean_penalty = torch.exp(-rewards.mean())
+        mean_entropy = infos["entropy"].mean()
+
+        entropy_loss = alpha * mean_penalty * mean_entropy
+
+        loss = pd_loss + c1_loss + c2_loss + overshoot_loss - entropy_loss
 
         ### for loggings
         with torch.no_grad():
@@ -234,6 +243,9 @@ class MRL(Base):
                 "C1_loss": c1_loss.item(),
                 "C2_loss": c2_loss.item(),
                 "overshoot_loss": overshoot_loss.item(),
+                "entropy_loss": entropy_loss.item(),
+                "mean_penalty": mean_penalty.item(),
+                "mean_entropy": mean_entropy.item(),
                 "C_pos_eig": C_pos_eig.item(),
                 "C_neg_eig": C_neg_eig.item(),
                 "C1_pos_eig": C1_pos_eig.item(),
@@ -287,9 +299,10 @@ class MRL(Base):
             return torch.from_numpy(data).to(self._dtype).to(self.device)
 
         states = to_tensor(batch["states"])
+        rewards = to_tensor(batch["rewards"])
 
         # List to track actor loss over minibatches
-        loss, infos = self.contraction_loss(states, detach)
+        loss, infos = self.contraction_loss(states, rewards, detach)
 
         self.W_optimizer.zero_grad()
         loss.backward()
@@ -309,6 +322,9 @@ class MRL(Base):
             f"{self.name}/W_loss/C1_loss": infos["C1_loss"],
             f"{self.name}/W_loss/C2_loss": infos["C2_loss"],
             f"{self.name}/W_loss/overshoot_loss": infos["overshoot_loss"],
+            f"{self.name}/W_loss/entropy_loss": infos["entropy_loss"],
+            f"{self.name}/W_loss/mean_penalty": infos["mean_penalty"],
+            f"{self.name}/W_loss/mean_entropy": infos["mean_entropy"],
             f"{self.name}/C_analytics/C_pos_eig": infos["C_pos_eig"],
             f"{self.name}/C_analytics/C_neg_eig": infos["C_neg_eig"],
             f"{self.name}/C_analytics/C1_pos_eig": infos["C1_pos_eig"],
@@ -544,7 +560,7 @@ class MRL(Base):
 
         with torch.no_grad():
             ### Compute the main rewards
-            W = self.W_func(x, xref, uref, x_trim, xref_trim)
+            W, infos = self.W_func(states, deterministic=True)
             M = torch.inverse(W)
 
             error = (x - xref).unsqueeze(-1)
@@ -589,7 +605,7 @@ class MRL(Base):
 
         # aux_rewards = torch.tanh(aux_rewards / 30)
 
-        alpha = 0.5
+        alpha = 1.0
         rewards = alpha * rewards + (1 - alpha) * aux_rewards
 
         return rewards
@@ -811,11 +827,11 @@ class MRL_Approximation(Base):
 
     def get_true_metrics(self, states: torch.Tensor):
         #### COMPUTE THE REAL DYNAMICS TO MEASURE ERRORS ####
+        states = states.requires_grad_()
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-        x = x.requires_grad_()
 
         with torch.no_grad():
-            W = self.W_func(x, xref, uref, x_trim, xref_trim)
+            W, _ = self.W_func(states)
             M = inverse(W)
 
         f = self.f_func(x).to(self.device)  # n, x_dim
@@ -858,21 +874,22 @@ class MRL_Approximation(Base):
     def contraction_loss(
         self,
         states: torch.Tensor,
+        rewards: torch.Tensor,
         detach: bool,
     ):
         true_dict = self.get_true_metrics(states)
 
+        states = states.requires_grad_()
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-        x = x.requires_grad_()
 
-        W = self.W_func(x, xref, uref, x_trim, xref_trim)
+        W, infos = self.W_func(states)
         M = inverse(W)
 
         f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
-        # Bbot_approx = self.B_null(x).to(self.device)
-        Bbot_approx = self.compute_B_perp_batch(
-            B_approx.detach(), self.x_dim - self.action_dim
-        )
+        Bbot_approx = self.B_null(x).to(self.device)
+        # Bbot_approx = self.compute_B_perp_batch(
+        #     B_approx.detach(), self.x_dim - self.action_dim
+        # )
 
         DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
@@ -939,7 +956,14 @@ class MRL_Approximation(Base):
         # c2_loss = sum([C2.sum().mean() for C2 in C2s])
         c2_loss = sum([(matrix_norm(C2) ** 2).mean() for C2 in C2s])
 
-        loss = pd_loss + overshoot_loss + c1_loss + c2_loss
+        ############# entropy loss ################
+        alpha = 1e-1
+        mean_penalty = torch.exp(-rewards.mean())
+        mean_entropy = infos["entropy"].mean()
+
+        entropy_loss = alpha * mean_penalty * mean_entropy
+
+        loss = pd_loss + overshoot_loss + c1_loss + c2_loss - entropy_loss
 
         ### for loggings
         with torch.no_grad():
@@ -966,9 +990,12 @@ class MRL_Approximation(Base):
             loss,
             {
                 "pd_loss": pd_loss.item(),
-                "overshoot_loss": overshoot_loss.item(),
                 "c1_loss": c1_loss.item(),
                 "c2_loss": c2_loss.item(),
+                "overshoot_loss": overshoot_loss.item(),
+                "entropy_loss": entropy_loss.item(),
+                "mean_penalty": mean_penalty.item(),
+                "mean_entropy": mean_entropy.item(),
                 "C_pos_eig": C_pos_eig.item(),
                 "C_neg_eig": C_neg_eig.item(),
                 "C1_pos_eig": C1_pos_eig.item(),
@@ -1148,11 +1175,12 @@ class MRL_Approximation(Base):
             return torch.from_numpy(data).to(self._dtype).to(self.device)
 
         states = to_tensor(batch["states"])
+        rewards = to_tensor(batch["rewards"])
         next_states = to_tensor(batch["next_states"])
         terminals = to_tensor(batch["terminals"])
 
         # List to track actor loss over minibatches
-        loss, infos = self.contraction_loss(states, detach)
+        loss, infos = self.contraction_loss(states, rewards, detach)
 
         self.W_optimizer.zero_grad()
         loss.backward()
@@ -1172,6 +1200,9 @@ class MRL_Approximation(Base):
             f"{self.name}/W_loss/overshoot_loss": infos["overshoot_loss"],
             f"{self.name}/W_loss/c1_loss": infos["c1_loss"],
             f"{self.name}/W_loss/c2_loss": infos["c2_loss"],
+            f"{self.name}/W_loss/entropy_loss": infos["entropy_loss"],
+            f"{self.name}/W_loss/mean_penalty": infos["mean_penalty"],
+            f"{self.name}/W_loss/mean_entropy": infos["mean_entropy"],
             f"{self.name}/C_analytics/C_pos_eig": infos["C_pos_eig"],
             f"{self.name}/C_analytics/C_neg_eig": infos["C_neg_eig"],
             f"{self.name}/C_analytics/C1_pos_eig": infos["C1_pos_eig"],
@@ -1387,12 +1418,12 @@ class MRL_Approximation(Base):
         return x, xref, uref, x_trim, xref_trim
 
     def get_rewards(self, states):
+        states = states.requires_grad_()
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
-        x = x.requires_grad_()
 
         with torch.no_grad():
             ### Compute the main rewards
-            W = self.W_func(x, xref, uref, x_trim, xref_trim)
+            W, _ = self.W_func(states)
             M = torch.inverse(W)
 
             error = (x - xref).unsqueeze(-1)
@@ -1439,7 +1470,7 @@ class MRL_Approximation(Base):
         aux_rewards[pos_indices] = torch.tanh(aux_rewards[pos_indices] / 30)
         aux_rewards[neg_indices] = -1.0
 
-        alpha = 0.5
+        alpha = 1.0
         rewards = alpha * rewards + (1 - alpha) * aux_rewards
 
         return rewards

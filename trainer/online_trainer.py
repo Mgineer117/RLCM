@@ -181,20 +181,14 @@ class Trainer:
                 0,
                 0,
             )
-            auc_list = []
 
             # Env initialization
             options = {"replace_x_0": True}
             obs, infos = self.env.reset(seed=self.seed, options=options)
 
-            trajectory = [infos["x"][:dimension]]
-            # error_norm_trajectory = [np.linalg.norm(self.env.xref[0] - infos["x"])]
-            error_trajectory = [
-                np.linalg.norm(self.env.xref[0] - infos["x"])
-                / self.env.init_tracking_error
-            ]
             tref_trajectory = [self.env.time_steps]
-
+            trajectory = [infos["x"][:dimension]]
+            normalized_error_trajectory = [1.0]
             for t in range(1, self.env.episode_len + 1):
                 with torch.no_grad():
                     t0 = time.time()
@@ -203,12 +197,11 @@ class Trainer:
                     a = a.cpu().numpy().squeeze(0) if a.shape[-1] > 1 else [a.item()]
 
                 next_obs, rew, term, trunc, infos = self.env.step(a)
-                trajectory.append(infos["x"][:dimension])  # Store trajectory point
-                error_trajectory.append(
-                    np.linalg.norm(self.env.xref[t] - infos["x"])
-                    / self.env.init_tracking_error
-                )
+
                 tref_trajectory.append(self.env.time_steps)
+                trajectory.append(infos["x"][:dimension])  # Store trajectory point
+                normalized_error_trajectory.append(infos["relative_tracking_error"])
+
                 done = term or trunc
 
                 obs = next_obs
@@ -217,14 +210,12 @@ class Trainer:
                 ep_tracking_error += infos["tracking_error"]
                 ep_control_effort += infos["control_effort"]
 
-                auc_list.append(infos["relative_tracking_error"])
-
                 if done:
-                    auc = np.trapezoid(auc_list, dx=self.env.dt)
+                    auc = np.trapezoid(normalized_error_trajectory, dx=self.env.dt) / t
                     ep_buffer.append(
                         {
-                            "avg_reward": ep_reward / (t + 1),
-                            "avg_inference_time": ep_inference_time / (t + 1),
+                            "avg_reward": ep_reward / t,
+                            "avg_inference_time": ep_inference_time / t,
                             "auc": auc,
                             "tracking_error": ep_tracking_error,
                             "control_effort": ep_control_effort,
@@ -250,7 +241,7 @@ class Trainer:
                     )
 
                     # error_norm_trajs.append(error_norm_trajectory)
-                    error_trajs.append(error_trajectory)
+                    error_trajs.append(normalized_error_trajectory)
                     tref_trajs.append(tref_trajectory)
 
                     break
@@ -274,15 +265,10 @@ class Trainer:
             )
             i += 1
         ax2.set_xlabel("Time Steps", labelpad=10)
-        ax2.set_ylabel(r"||x(t)-x^*(t)||_2 / ||x(t) - x^*(0)||_2", labelpad=10)
+        ax2.set_ylabel(r"$||x(t)-x^*(t)||_2 / ||x(0) - x^*(0)||_2$", labelpad=10)
 
         plt.tight_layout()
-
-        # Convert figure to a NumPy array
-        # Render the figure to update the canvas
         fig.canvas.draw()
-
-        # Extract image from the figure as a NumPy array (RGBA format)
         image_array = np.array(fig.canvas.renderer.buffer_rgba())
 
         # Close the figure to free memory
