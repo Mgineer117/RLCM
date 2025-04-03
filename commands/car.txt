@@ -1,7 +1,6 @@
-nohup python3 main.py --project CTRL --task car --algo-name ppo &
-nohup python3 main.py --project CTRL --task car --algo-name mrl &
-nohup python3 main.py --project CTRL --task car --algo-name mrl-approx &
-nohup python3 main.py --project CTRL --task car --algo-name c3m &
-nohup python3 main.py --project CTRL --task car --algo-name c3m-approx &
-nohup python3 main.py --project CTRL --task car --algo-name lqr &
-nohup python3 main.py --project CTRL --task car --algo-name lqr-approx &
+nohup python3 main.py --project RLCM --task car --algo-name ppo &
+nohup python3 main.py --project RLCM --task car --algo-name mrl &
+nohup python3 main.py --project RLCM --task car --algo-name mrl-approx &
+nohup python3 main.py --project RLCM --task car --algo-name mrl-ensemble &
+nohup python3 main.py --project RLCM --task car --algo-name c3m &
+nohup python3 main.py --project RLCM --task car --algo-name c3m-approx &
