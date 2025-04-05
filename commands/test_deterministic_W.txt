@@ -1,9 +1,9 @@
-nohup python3 main.py --project Deterministic_W --task car --algo-name mrl-approx --W-entropy-scaler 0.0 &
-nohup python3 main.py --project Deterministic_W --task pvtol --algo-name mrl-approx --W-entropy-scaler 0.0 &
-nohup python3 main.py --project Deterministic_W --task neurallander --algo-name mrl-approx --W-entropy-scaler 0.0 &
-nohup python3 main.py --project Deterministic_W --task quadrotor --algo-name mrl-approx --W-entropy-scaler 0.0 &
+nohup python3 main.py --project Deterministic_W --task car --algo-name mrl-approx --W-entropy-scaler 0.0 --gpu-idx 1 &
+nohup python3 main.py --project Deterministic_W --task pvtol --algo-name mrl-approx --W-entropy-scaler 0.0 --gpu-idx 1 &
+nohup python3 main.py --project Deterministic_W --task neurallander --algo-name mrl-approx --W-entropy-scaler 0.0 --gpu-idx 1 &
+nohup python3 main.py --project Deterministic_W --task quadrotor --algo-name mrl-approx --W-entropy-scaler 0.0 --gpu-idx 1 &
 
-nohup python3 main.py --project Deterministic_W --task car --algo-name mrl --W-entropy-scaler 0.0 &
-nohup python3 main.py --project Deterministic_W --task pvtol --algo-name mrl --W-entropy-scaler 0.0 &
-nohup python3 main.py --project Deterministic_W --task neurallander --algo-name mrl --W-entropy-scaler 0.0 &
-nohup python3 main.py --project Deterministic_W --task quadrotor --algo-name mrl --W-entropy-scaler 0.0 &
+nohup python3 main.py --project Deterministic_W --task car --algo-name mrl --W-entropy-scaler 0.0 --gpu-idx 1 &
+nohup python3 main.py --project Deterministic_W --task pvtol --algo-name mrl --W-entropy-scaler 0.0 --gpu-idx 1 &
+nohup python3 main.py --project Deterministic_W --task neurallander --algo-name mrl --W-entropy-scaler 0.0 --gpu-idx 1 &
+nohup python3 main.py --project Deterministic_W --task quadrotor --algo-name mrl --W-entropy-scaler 0.0 --gpu-idx 1 &

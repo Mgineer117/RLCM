@@ -1,9 +1,9 @@
-nohup python3 main.py --project Test_Disturbance --task car --algo-name mrl-approx --sigma 0.1 &
-nohup python3 main.py --project Test_Disturbance --task pvtol --algo-name mrl-approx --sigma 0.1 &
-nohup python3 main.py --project Test_Disturbance --task neurallander --algo-name mrl-approx --sigma 0.1 &
-nohup python3 main.py --project Test_Disturbance --task quadrotor --algo-name mrl-approx --sigma 0.1 &
+nohup python3 main.py --project Test_Disturbance --task car --algo-name mrl-approx --sigma 0.1 --gpu-idx 2 &
+nohup python3 main.py --project Test_Disturbance --task pvtol --algo-name mrl-approx --sigma 0.1 --gpu-idx 2 &
+nohup python3 main.py --project Test_Disturbance --task neurallander --algo-name mrl-approx --sigma 0.1 --gpu-idx 2 &
+nohup python3 main.py --project Test_Disturbance --task quadrotor --algo-name mrl-approx --sigma 0.1 --gpu-idx 2 &
 
-nohup python3 main.py --project Test_Disturbance --task car --algo-name mrl-approx --sigma 0.3 &
-nohup python3 main.py --project Test_Disturbance --task pvtol --algo-name mrl-approx --sigma 0.3 &
-nohup python3 main.py --project Test_Disturbance --task neurallander --algo-name mrl-approx --sigma 0.3 &
-nohup python3 main.py --project Test_Disturbance --task quadrotor --algo-name mrl-approx --sigma 0.3 &
+nohup python3 main.py --project Test_Disturbance --task car --algo-name mrl-approx --sigma 0.3 --gpu-idx 2 &
+nohup python3 main.py --project Test_Disturbance --task pvtol --algo-name mrl-approx --sigma 0.3 --gpu-idx 2 &
+nohup python3 main.py --project Test_Disturbance --task neurallander --algo-name mrl-approx --sigma 0.3 --gpu-idx 2 &
+nohup python3 main.py --project Test_Disturbance --task quadrotor --algo-name mrl-approx --sigma 0.3 --gpu-idx 2 &
