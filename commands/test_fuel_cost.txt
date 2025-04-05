@@ -1,0 +1,4 @@
+nohup python3 main.py --project Test_Fuel_Cost --task car --algo-name mrl-approx --control-scaler 0.3 &
+nohup python3 main.py --project Test_Fuel_Cost --task pvtol --algo-name mrl-approx --control-scaler 0.3 &
+nohup python3 main.py --project Test_Fuel_Cost --task neurallander --algo-name mrl-approx --control-scaler 0.3 &
+nohup python3 main.py --project Test_Fuel_Cost --task quadrotor --algo-name mrl-approx --control-scaler 0.3 &

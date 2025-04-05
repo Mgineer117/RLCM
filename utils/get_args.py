@@ -95,6 +95,12 @@ def get_args():
     parser.add_argument(
         "--entropy-scaler", type=float, default=None, help="Base learning rate."
     )
+    parser.add_argument(
+        "--W-entropy-scaler", type=float, default=1e-1, help="Base learning rate."
+    )
+    parser.add_argument(
+        "--control-scaler", type=float, default=0.0, help="Base learning rate."
+    )
     parser.add_argument("--gamma", type=float, default=None, help="Base learning rate.")
     parser.add_argument(
         "--load-pretrained-model",

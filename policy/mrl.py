@@ -42,7 +42,9 @@ class MRL(Base):
         lbd: float = 1e-2,
         eps: float = 1e-2,
         eps_clip: float = 0.2,
+        W_entropy_scaler: float = 1e-3,
         entropy_scaler: float = 1e-3,
+        control_scaler: float = 0.0,
         l2_reg: float = 1e-8,
         target_kl: float = 0.03,
         gamma: float = 0.99,
@@ -65,7 +67,9 @@ class MRL(Base):
 
         self.num_minibatch = num_minibatch
         self.minibatch_size = minibatch_size
+        self.W_entropy_scaler = W_entropy_scaler
         self._entropy_scaler = entropy_scaler
+        self.control_scaler = control_scaler
         self.eps = eps
         self.gamma = gamma
         self.gae = gae
@@ -167,7 +171,10 @@ class MRL(Base):
         states = states.requires_grad_()
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
 
-        W, infos = self.W_func(states)
+        if self.W_entropy_scaler > 0:
+            W, infos = self.W_func(states)
+        else:
+            W, infos = self.W_func(states, deterministic=True)
         M = inverse(W)
 
         f = self.f_func(x).to(self.device)  # n, x_dim
@@ -236,11 +243,10 @@ class MRL(Base):
         )
 
         ############# entropy loss ################
-        alpha = 3e-1
         mean_penalty = torch.exp(-rewards.mean())
         mean_entropy = infos["entropy"].mean()
 
-        entropy_loss = alpha * mean_penalty * mean_entropy
+        entropy_loss = self.W_entropy_scaler * mean_penalty * mean_entropy
 
         loss = pd_loss + c1_loss + c2_loss + overshoot_loss - entropy_loss
 
@@ -314,7 +320,7 @@ class MRL(Base):
         states = to_tensor(batch["states"])
         actions = to_tensor(batch["actions"])
         original_rewards = to_tensor(batch["rewards"])
-        rewards = self.get_rewards(states)
+        rewards = self.get_rewards(states, actions)
         terminals = to_tensor(batch["terminals"])
         old_logprobs = to_tensor(batch["logprobs"])
 
@@ -448,7 +454,7 @@ class MRL(Base):
         update_time = time.time() - t0
         return loss_dict, timesteps, update_time
 
-    def get_rewards(self, states):
+    def get_rewards(self, states: torch.Tensor, actions: torch.Tensor):
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
         x = x.requires_grad_()
 
@@ -463,43 +469,8 @@ class MRL(Base):
             rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
 
         ### Compute the aux rewards ###
-        f = self.f_func(x).to(self.device)  # n, x_dim
-        B = self.B_func(x).to(self.device)  # n, x_dim, action
-
-        DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
-        DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
-
-        u, _ = self.actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
-        K = self.Jacobian(u, x)  # n, f_dim, x_dim
-
-        u = u.detach()
-        K = K.detach()
-
-        A = DfDx + sum(
-            [
-                u[:, i].unsqueeze(-1).unsqueeze(-1) * DBDx[:, :, :, i]
-                for i in range(self.action_dim)
-            ]
-        )
-
-        ABK = A + matmul(B, K)
-        MABK = matmul(M, ABK)
-        sym_MABK = MABK + transpose(MABK, 1, 2)
-
-        C_u_only = -sym_MABK - self.eps * torch.eye(sym_MABK.shape[-1]).to(self.device)
-
-        aux_rewards = torch.linalg.eigvalsh(C_u_only).mean(dim=1).unsqueeze(-1)
-
-        pos_indices = aux_rewards > 0
-        neg_indices = aux_rewards <= 0
-
-        aux_rewards[pos_indices] = torch.tanh(aux_rewards[pos_indices] / 30)
-        aux_rewards[neg_indices] = -1.0
-
-        # aux_rewards = torch.tanh(aux_rewards / 30)
-
-        alpha = 1.0
-        rewards = alpha * rewards + (1 - alpha) * aux_rewards
+        fuel_efficiency = 1 / (torch.linalg.norm(actions, dim=-1, keepdim=True) + 1)
+        rewards = rewards + self.control_scaler * fuel_efficiency
 
         return rewards
 
@@ -526,7 +497,9 @@ class MRL_Approximation(Base):
         lbd: float = 1e-2,
         eps: float = 1e-2,
         eps_clip: float = 0.2,
+        W_entropy_scaler: float = 1e-3,
         entropy_scaler: float = 1e-3,
+        control_scaler: float = 1e-3,
         l2_reg: float = 1e-5,
         target_kl: float = 0.03,
         gamma: float = 0.99,
@@ -549,7 +522,9 @@ class MRL_Approximation(Base):
 
         self.num_minibatch = num_minibatch
         self.minibatch_size = minibatch_size
+        self.W_entropy_scaler = W_entropy_scaler
         self._entropy_scaler = entropy_scaler
+        self.control_scaler = control_scaler
         self.eps = eps
         self.gamma = gamma
         self.gae = gae
@@ -797,16 +772,16 @@ class MRL_Approximation(Base):
         states = states.requires_grad_()
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
 
-        W, infos = self.W_func(states)
+        if self.W_entropy_scaler > 0:
+            W, infos = self.W_func(states)
+        else:
+            W, infos = self.W_func(states, deterministic=True)
         M = inverse(W)
 
         f_approx, B_approx, Bbot_approx = self.Dynamic_func(x)
-        # f_approx = self.f_func(x).to(self.device)
-        # B_approx = self.B_func(x).to(self.device)
-        Bbot_approx = self.B_null(x).to(self.device)
-        # Bbot_approx = self.compute_B_perp_batch(
-        #     B_approx.detach(), self.x_dim - self.action_dim
-        # )
+        Bbot_approx = self.compute_B_perp_batch(
+            B_approx.detach(), self.x_dim - self.action_dim
+        )
 
         DfDx = self.Jacobian(f_approx, x).detach()  # n, f_dim, x_dim
         DBDx = self.B_Jacobian(B_approx, x).detach()  # n, x_dim, x_dim, b_dim
@@ -874,11 +849,10 @@ class MRL_Approximation(Base):
         )
 
         ############# entropy loss ################
-        alpha = 3e-1
         mean_penalty = torch.exp(-rewards.mean())
         mean_entropy = infos["entropy"].mean()
 
-        entropy_loss = alpha * mean_penalty * mean_entropy
+        entropy_loss = self.W_entropy_scaler * mean_penalty * mean_entropy
 
         loss = pd_loss + c1_loss + c2_loss + overshoot_loss - entropy_loss
 
@@ -967,7 +941,7 @@ class MRL_Approximation(Base):
         states = to_tensor(batch["states"])
         actions = to_tensor(batch["actions"])
         original_rewards = to_tensor(batch["rewards"])
-        rewards = self.get_rewards(states)
+        rewards = self.get_rewards(states, actions)
         terminals = to_tensor(batch["terminals"])
         old_logprobs = to_tensor(batch["logprobs"])
 
@@ -1107,7 +1081,7 @@ class MRL_Approximation(Base):
         update_time = time.time() - t0
         return loss_dict, timesteps, update_time
 
-    def get_rewards(self, states: torch.Tensor):
+    def get_rewards(self, states: torch.Tensor, actions: torch.Tensor):
         x, xref, uref, x_trim, xref_trim = self.trim_state(states)
 
         with torch.no_grad():
@@ -1119,5 +1093,9 @@ class MRL_Approximation(Base):
             errorT = transpose(error, 1, 2)
 
             rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
+
+        ### Compute the aux rewards ###
+        fuel_efficiency = 1 / (torch.linalg.norm(actions, dim=-1, keepdim=True) + 1)
+        rewards = rewards + self.control_scaler * fuel_efficiency
 
         return rewards

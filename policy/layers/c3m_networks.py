@@ -77,6 +77,8 @@ class C3M_W_Gaussian(nn.Module):
         states: torch.Tensor,
         deterministic: bool = False,
     ):
+        # deterministic = True
+
         n = states.shape[0]
         logits = self.model(states)  # .view(n, self.x_dim, self.x_dim)
         mu = self.mu(logits)  # .view(n, self.x_dim, self.x_dim)
