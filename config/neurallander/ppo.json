@@ -18,7 +18,6 @@
     "minibatch_size": 512,
     "entropy_scaler": 1e-2,
     "eval_episodes": 10,
-    "scheduler": "lambda",
     "sigma": 0.0,
     "gamma": 0.99
 }
