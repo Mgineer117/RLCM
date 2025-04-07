@@ -66,25 +66,20 @@ class C3M_W_Gaussian(nn.Module):
         self.w_lb = w_lb
 
         self.model = MLP(
-            input_dim=state_dim, hidden_dims=hidden_dim, activation=activation
+            input_dim=state_dim, hidden_dims=hidden_dim, output_dim=x_dim**2, activation=activation
         )
-        self.mu = nn.Linear(hidden_dim[-1], x_dim**2, bias=True)
-        self.logstd = nn.Linear(hidden_dim[-1], x_dim**2, bias=True)
-        nn.init.constant_(self.logstd.bias, 0.0)
 
     def forward(
         self,
         states: torch.Tensor,
         deterministic: bool = False,
     ):
-        # deterministic = True
-
         n = states.shape[0]
         logits = self.model(states)  # .view(n, self.x_dim, self.x_dim)
-        mu = self.mu(logits)  # .view(n, self.x_dim, self.x_dim)
-        logstd = self.logstd(logits).clamp(min=-1, max=2)
+
+        mu = logits
+        logstd = torch.zeros_like(mu)
         var = torch.exp(logstd) ** 2
-        # clip var such that entropy is positive always
 
         if deterministic:
             W = mu  # .view(n, self.x_dim, self.x_dim)

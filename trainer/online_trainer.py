@@ -217,8 +217,8 @@ class Trainer:
                             "avg_reward": ep_reward / t,
                             "avg_inference_time": ep_inference_time / t,
                             "auc": auc,
-                            "tracking_error": ep_tracking_error,
-                            "control_effort": ep_control_effort,
+                            "tracking_error": ep_tracking_error / t,
+                            "control_effort": ep_control_effort / t,
                         }
                     )
 
