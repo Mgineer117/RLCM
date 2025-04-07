@@ -460,17 +460,40 @@ class MRL(Base):
 
         with torch.no_grad():
             ### Compute the main rewards
-            W, infos = self.W_func(states, deterministic=True)
+            W, _ = self.W_func(states, deterministic=True)
             M = torch.inverse(W)
 
-            error = (x - xref).unsqueeze(-1)
-            errorT = transpose(error, 1, 2)
-
-            rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
-
         ### Compute the aux rewards ###
-        fuel_efficiency = 1 / (torch.linalg.norm(actions, dim=-1, keepdim=True) + 1)
-        rewards = rewards + self.control_scaler * fuel_efficiency
+        f = self.f_func(x).to(self.device)  # n, x_dim
+        B = self.B_func(x).to(self.device)  # n, x_dim, action
+
+        DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
+        DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
+
+        f = f.detach()
+        B = B.detach()
+
+        u, _ = self.actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
+        K = self.Jacobian(u, x)  # n, f_dim, x_dim
+
+        u = u.detach()
+        K = K.detach()
+
+        A = DfDx + sum(
+            [
+                u[:, i].unsqueeze(-1).unsqueeze(-1) * DBDx[:, :, :, i]
+                for i in range(self.action_dim)
+            ]
+        )
+
+        ABK = A + matmul(B, K)
+        MABK = matmul(M, ABK)
+        sym_MABK = MABK + transpose(MABK, 1, 2)
+
+        C_u_only = -sym_MABK - self.eps * torch.eye(sym_MABK.shape[-1]).to(self.device)
+
+        rewards = torch.linalg.eigvalsh(C_u_only).mean(dim=1).unsqueeze(-1)
+        rewards = torch.tanh(rewards / 30)
 
         return rewards
 

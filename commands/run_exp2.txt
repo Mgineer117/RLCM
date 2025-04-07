@@ -1,11 +1,7 @@
-nohup python3 main.py --project RLCM --task neurallander --algo-name ppo &
-nohup python3 main.py --project RLCM --task neurallander --algo-name mrl &
-nohup python3 main.py --project RLCM --task neurallander --algo-name mrl-approx &
-nohup python3 main.py --project RLCM --task neurallander --algo-name c3m &
-nohup python3 main.py --project RLCM --task neurallander --algo-name c3m-approx &
+nohup python3 main.py --project RLCM-V-dot-Rewards --task car --algo-name mrl &
 
-nohup python3 main.py --project RLCM --task quadrotor --algo-name ppo &
-nohup python3 main.py --project RLCM --task quadrotor --algo-name mrl &
-nohup python3 main.py --project RLCM --task quadrotor --algo-name mrl-approx &
-nohup python3 main.py --project RLCM --task quadrotor --algo-name c3m &
-nohup python3 main.py --project RLCM --task quadrotor --algo-name c3m-approx &
+nohup python3 main.py --project RLCM-V-dot-Rewards --task pvtol --algo-name mrl &
+
+nohup python3 main.py --project RLCM-V-dot-Rewards --task neurallander --algo-name mrl &
+
+nohup python3 main.py --project RLCM-V-dot-Rewards --task quadrotor --algo-name mrl &
