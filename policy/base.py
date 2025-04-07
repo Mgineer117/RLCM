@@ -159,6 +159,21 @@ class Base(nn.Module):
             return -1.0 * (negative_zTAz.mean())
         else:
             return torch.tensor(0.0).to(self.device).requires_grad_()
+        
+    def rewards_pos_matrix_random_sampling(self, A: torch.Tensor):
+        # A: n x d x d
+        # z: K x d
+        n, A_dim, _ = A.shape
+
+        z = torch.randn((n, A_dim)).to(self.device)
+        z = z / z.norm(dim=-1, keepdim=True)
+        z = z.unsqueeze(-1)
+        zT = transpose(z, 1, 2)
+
+        # K x d @ d x d = n x K x d
+        zTAz = matmul(matmul(zT, A), z)
+        return zTAz.squeeze(-1)
+        
 
     def trim_state(self, state: torch.Tensor):
         # state trimming
@@ -304,5 +319,65 @@ class Base(nn.Module):
 
         return norm_dict
 
+    def get_rewards(self, states: torch.Tensor, actions: torch.Tensor, mode:str = "V_dot"):
+        x, xref, uref, x_trim, xref_trim = self.trim_state(states)
+        if mode == "V":
+            with torch.no_grad():
+                ### Compute the main rewards
+                W, _ = self.W_func(states, deterministic=True)
+                M = torch.inverse(W)
+
+                error = (x - xref).unsqueeze(-1)
+                errorT = transpose(error, 1, 2)
+
+                rewards = (1 / (errorT @ M @ error + 1)).squeeze(-1)
+
+            ### Compute the aux rewards ###
+            fuel_efficiency = 1 / (torch.linalg.norm(actions, dim=-1, keepdim=True) + 1)
+            rewards = rewards + self.control_scaler * fuel_efficiency
+
+            return rewards
+        elif mode == "V_dot":
+            x = x.requires_grad_()
+
+            with torch.no_grad():
+                ### Compute the main rewards
+                W, _ = self.W_func(states, deterministic=True)
+                M = torch.inverse(W)
+
+            ### Compute the aux rewards ###
+            f = self.f_func(x).to(self.device)  # n, x_dim
+            B = self.B_func(x).to(self.device)  # n, x_dim, action
+
+            DfDx = self.Jacobian(f, x).detach()  # n, f_dim, x_dim
+            DBDx = self.B_Jacobian(B, x).detach()  # n, x_dim, x_dim, b_dim
+
+            f = f.detach()
+            B = B.detach()
+
+            u, _ = self.actor(x, xref, uref, x_trim, xref_trim, deterministic=True)
+            K = self.Jacobian(u, x)  # n, f_dim, x_dim
+
+            u = u.detach()
+            K = K.detach()
+
+            A = DfDx + sum(
+                [
+                    u[:, i].unsqueeze(-1).unsqueeze(-1) * DBDx[:, :, :, i]
+                    for i in range(self.action_dim)
+                ]
+            )
+
+            ABK = A + matmul(B, K)
+            MABK = matmul(M, ABK)
+            sym_MABK = MABK + transpose(MABK, 1, 2)
+
+            C_u_only = -sym_MABK - self.eps * torch.eye(sym_MABK.shape[-1]).to(self.device)
+
+            rewards = self.rewards_pos_matrix_random_sampling(-C_u_only-self.eps*torch.eye(C_u_only.shape[-1]).to(self.device))
+            rewards = torch.tanh(rewards / 30)
+
+        return rewards
+    
     def learn(self):
         pass

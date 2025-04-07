@@ -248,6 +248,7 @@ def get_policy(env, args):
             K=args.K_epochs,
             nupdates=nupdates,
             dt=env.dt,
+            reward_mode=args.reward_mode,   
             device=args.device,
         )
     elif algo_name in ("mrl-approx", "mrl-approx-manual"):
@@ -330,6 +331,7 @@ def get_policy(env, args):
             K=args.K_epochs,
             nupdates=nupdates,
             dt=env.dt,
+            reward_mode=args.reward_mode,   
             device=args.device,
         )
     elif algo_name in ("cmrl"):  # , "cmrl-approx"):

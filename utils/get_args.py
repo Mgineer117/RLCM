@@ -101,6 +101,9 @@ def get_args():
     parser.add_argument(
         "--control-scaler", type=float, default=0.0, help="Base learning rate."
     )
+    parser.add_argument(
+        "--reward-mode", type=str, default="V", help="Base learning rate."
+    )
     parser.add_argument("--gamma", type=float, default=None, help="Base learning rate.")
     parser.add_argument(
         "--load-pretrained-model",
