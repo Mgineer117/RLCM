@@ -11,7 +11,7 @@
     "w_ub": 10,
     "w_lb": 1e-1,
     "eps": 0.05,
-    "lbd": 1.0,
+    "lbd": 2.5,
     "num_minibatch": 4,
     "minibatch_size": 256,
     "eval_episodes": 10,
