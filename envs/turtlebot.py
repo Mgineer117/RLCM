@@ -23,7 +23,7 @@ X_INIT_MAX = np.array([-1.2, 1.25, np.pi]) # 3.11
 XE_INIT_MIN = np.array([-0.3, -0.3, 0])
 XE_INIT_MAX = np.array([0.3, 0.3, 0])
 
-UREF_MIN = np.array([0.0, 0.0]).reshape(-1, 1)
+UREF_MIN = np.array([0.0, -1.82]).reshape(-1, 1)
 UREF_MAX = np.array([0.22, 1.82]).reshape(-1, 1)
 
 state_weights = np.array([1, 1, 1])
