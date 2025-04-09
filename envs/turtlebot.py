@@ -55,7 +55,6 @@ class TurtlebotEnv(gym.Env):
         self.sigma = sigma
         self.d_up = 3 * sigma
 
-        self.Bbot_func = None
         self.effective_indices = np.arange(0, 3)
 
         self.observation_space = spaces.Box(
@@ -64,6 +63,22 @@ class TurtlebotEnv(gym.Env):
         self.action_space = spaces.Box(
             low=UREF_MIN.flatten(), high=UREF_MAX.flatten(), dtype=np.float64
         )
+
+    def Bbot_func(self, x: torch.Tensor):
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)
+
+        n = x.shape[0]
+        theta = x[:, 2]  # assuming theta is at index 2
+
+        Bbot = torch.zeros(n, self.num_dim_x, self.num_dim_x - self.num_dim_control).type_as(x)
+
+        Bbot[:, 0, 0] = k2 * torch.sin(theta) *k3
+        Bbot[:, 1, 0] = -k1 * torch.cos(theta) *k3
+        Bbot[:, 2, 0] = 0.0
+
+        return Bbot
+
 
     def f_func_np(self, x):
         # x: bs x n x 1
