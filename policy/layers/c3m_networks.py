@@ -8,7 +8,7 @@ from policy.layers.building_blocks import MLP
 
 
 def get_W_model(task, x_dim, effective_x_dim, action_dim):
-    if task in ("car", "neurallander", "pvtol", "segway"):
+    if task in ("car", "neurallander", "pvtol", "segway", "turtlebot"):
         model_W = torch.nn.Sequential(
             torch.nn.Linear(effective_x_dim, 128, bias=True),
             torch.nn.Tanh(),
@@ -214,7 +214,7 @@ class C3M_W(nn.Module):
             W = W + self.w_lb * torch.eye(self.x_dim).to(self.device).view(
                 1, self.x_dim, self.x_dim
             )
-        elif self.task in ("pvtol", "segway"):
+        elif self.task in ("pvtol", "segway", "turtlebot"):
             n = x_trim.shape[0]
 
             W = self.model_W(x_trim).view(n, self.x_dim, self.x_dim)

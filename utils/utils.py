@@ -7,6 +7,7 @@ from envs.pvtol import PvtolEnv
 from envs.quadrotor import QuadRotorEnv
 from envs.neurallander import NeuralLanderEnv
 from envs.segway import SegwayEnv
+from envs.turtlebot import TurtlebotEnv
 
 
 def call_env(args):
@@ -22,6 +23,8 @@ def call_env(args):
         env = NeuralLanderEnv(sigma=args.sigma)
     elif task == "segway":
         env = SegwayEnv(sigma=args.sigma)
+    elif task == "turtlebot":
+        env = TurtlebotEnv(sigma=args.sigma)
     else:
         raise NotImplementedError(f"{task} is not implemented.")
 
