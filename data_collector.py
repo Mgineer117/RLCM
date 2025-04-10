@@ -7,7 +7,7 @@ import numpy as np
 import time
 
 class MDPDataCollector(Node):
-    def __init__(self, total_steps=200, save_path='ref.npz'):
+    def __init__(self, total_steps=200, save_path='collected_data.npz'):
         super().__init__('mdp_data_collector')
 
         qos = QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.VOLATILE, history=QoSHistoryPolicy.KEEP_LAST)
@@ -46,10 +46,9 @@ class MDPDataCollector(Node):
 
     def B_func(self, x, y, theta):
         B = np.zeros((3, 2))
-        B[0, 0] = 0.8628 * np.cos(theta)
-        B[1, 1] = 0.6614 * np.sin(theta)
-        B[2, 1] = 0.6191
-
+        B[0, 0] = 0.8912 * np.cos(theta)
+        B[1, 1] = 0.9055 * np.sin(theta)
+        B[2, 1] = 0.7953
         return B
 
     def pose_callback(self, msg):
@@ -74,12 +73,12 @@ class MDPDataCollector(Node):
             self.action_history.append(self.previous_action)
             self.next_state_history.append(current_state)
 
-            B = self.B_func(x, y, theta)
-            a = np.array([[linear_velocity, angular_velocity]]).T
-            # print(current_state)
-            x_dot = (np.array(current_state) - np.array(self.previous_state)) / 0.1
-            x_dot_approx = (B@a).T
-            print(x_dot-x_dot_approx)
+            # B = self.B_func(x, y, theta)
+            # a = np.array([[linear_velocity, angular_velocity]]).T
+            # # print(current_state)
+            # x_dot = (np.array(current_state) - np.array(self.previous_state)) / 0.1
+            # x_dot_approx = (B@a).T
+            # print(x_dot-x_dot_approx)
             # print(angular_velocity)
         
         # Publish velocity command
@@ -154,15 +153,12 @@ class MDPDataCollector(Node):
 
         # Save to .npz
         np.savez(self.save_path, **data)
-        data = np.load('ref.npz')['state']
-        print(data)
-
         self.get_logger().info(f"Data saved to {self.save_path}")
         rclpy.shutdown()
     
 def main(args=None):
     rclpy.init(args=args)
-    node = MDPDataCollector(total_steps=200, save_path='ref.npz')
+    node = MDPDataCollector(total_steps=200, save_path='collected_data.npz')
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
