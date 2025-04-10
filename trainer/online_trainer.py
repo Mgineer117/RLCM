@@ -1,6 +1,5 @@
 import os
 import time
-import pickle
 import numpy as np
 import torch
 import gymnasium as gym
@@ -320,8 +319,14 @@ class Trainer:
         # save checkpoint
         name = f"model_{e}.pth"
         path = os.path.join(self.logger.checkpoint_dir, name)
-        torch.save(
-            self.policy.state_dict(),
+        try:
+            torch.save(
+            self.policy.u_func.state_dict(),
+            path
+        )
+        except:
+            torch.save(
+            self.policy.actor.state_dict(),
             path
         )
         # save the best model
@@ -331,8 +336,14 @@ class Trainer:
         ):
             name = f"best_model_{e}.p"
             path = os.path.join(self.logger.log_dir, name)
-            torch.save(
-                self.policy.state_dict(),
+            try:
+                torch.save(
+                self.policy.u_func.state_dict(),
+                path
+            )
+            except:
+                torch.save(
+                self.policy.actor.state_dict(),
                 path
             )
 
