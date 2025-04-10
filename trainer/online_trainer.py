@@ -318,14 +318,12 @@ class Trainer:
 
     def save_model(self, e):
         # save checkpoint
-        name = f"model_{e}.p"
+        name = f"model_{e}.pth"
         path = os.path.join(self.logger.checkpoint_dir, name)
-        pickle.dump(
-            (self.policy),
-            open(path, "wb"),
+        torch.save(
+            self.policy.state_dict(),
+            path
         )
-        # self.policy.save_model(self.logger.checkpoint_dir, e)
-
         # save the best model
         if (
             np.mean(self.last_reward_mean) > self.last_max_reward
@@ -333,9 +331,9 @@ class Trainer:
         ):
             name = f"best_model_{e}.p"
             path = os.path.join(self.logger.log_dir, name)
-            pickle.dump(
-                (self.policy),
-                open(path, "wb"),
+            torch.save(
+                self.policy.state_dict(),
+                path
             )
 
     def average_dict_values(self, dict_list):

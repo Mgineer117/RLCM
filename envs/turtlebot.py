@@ -7,21 +7,21 @@ from gymnasium import spaces
 from infos import DATASET_URLS
 
 # Truetlebot PARAMETERS
-X_MIN = np.array([-5.0, -2.0, -2*np.pi]).reshape(-1, 1)
+X_MIN = np.array([-5.0, -2.0, 0]).reshape(-1, 1)
 X_MAX = np.array([0.0, 2.0, 2*np.pi]).reshape(-1, 1)
 
-k1, k2, k3 = 0.8628, 0.8614, 0.3191
+k1, k2, k3 = 0.8912, 0.9055, 0.7953
 
 lim = 1.0
 XE_MIN = np.array([-lim, -lim, -lim]).reshape(-1, 1)
 XE_MAX = np.array([lim, lim, lim]).reshape(-1, 1)
 
 # for sampling ref
-X_INIT_MIN = np.array([-1.8, 0.65, -np.pi])
-X_INIT_MAX = np.array([-1.2, 1.25, np.pi]) # 3.11
+X_INIT_MIN = np.array([-1.7, 0.75, np.pi])
+X_INIT_MAX = np.array([-1.3, 1.15, (3/2)*np.pi]) 
 
-XE_INIT_MIN = np.array([-0.3, -0.3, 0])
-XE_INIT_MAX = np.array([0.3, 0.3, 0])
+XE_INIT_MIN = np.array([-0.1, -0.1, -(1/4) * np.pi])
+XE_INIT_MAX = np.array([0.1, 0.1, (1/4) * np.pi])
 
 UREF_MIN = np.array([0.0, -1.82]).reshape(-1, 1)
 UREF_MAX = np.array([0.22, 1.82]).reshape(-1, 1)
@@ -107,13 +107,14 @@ class TurtlebotEnv(gym.Env):
             x = x[np.newaxis, :]
         n = x.shape[0]
 
-        p_x, p_z, theta = [x[:, i] for i in range(self.num_dim_x)]
+        p_x, p_y, theta = [x[:, i] for i in range(self.num_dim_x)]
 
         B = np.zeros((n, self.num_dim_x, self.num_dim_control))
 
         B[:, 0, 0] = k1 * np.cos(theta)
         B[:, 1, 0] = k2 * np.sin(theta)
         B[:, 2, 1] = k3
+
         return B.squeeze()
 
     def B_func(self, x):
@@ -130,6 +131,10 @@ class TurtlebotEnv(gym.Env):
         B[:, 2, 1] = k3
         return B
 
+    def theta_correction(self, x: np.ndarray):
+        x[2] = np.mod(x[2], 2 * np.pi)
+        return x
+
     def system_reset(self):
         # with temp_seed(int(seed)):
         xref_0 = X_INIT_MIN + np.random.rand(len(X_INIT_MIN)) * (
@@ -143,13 +148,13 @@ class TurtlebotEnv(gym.Env):
         freqs = list(range(1, 11))
         weights = np.random.randn(len(freqs), len(UREF_MIN))
         weights = (
-            0.1 * weights / np.sqrt((weights**2).sum(axis=0, keepdims=True))
+             weights / np.sqrt((weights**2).sum(axis=0, keepdims=True))
         ).tolist()
 
         xref = [xref_0]
         uref = []
         for i, _t in enumerate(self.t):
-            u = 0.5 * np.array([0.22, 0])  # ref
+            u = np.array([0.05, 0])  # ref
             for freq, weight in zip(freqs, weights):
                 u += np.array(
                     [
@@ -172,6 +177,7 @@ class TurtlebotEnv(gym.Env):
                 x_t[: self.pos_dimension] >= X_MAX.flatten()[: self.pos_dimension]
             )
 
+            x_t = self.theta_correction(x_t)
             x_t = np.clip(x_t, X_MIN.flatten(), X_MAX.flatten())
             xref.append(x_t)
             uref.append(u)
@@ -196,6 +202,8 @@ class TurtlebotEnv(gym.Env):
         noise = np.clip(noise, -self.d_up, self.d_up)
 
         self.x_t += noise
+        self.x_t = self.theta_correction(self.x_t)
+
         termination = np.any(
             self.x_t[: self.pos_dimension] <= X_MIN.flatten()[: self.pos_dimension]
         ) or np.any(
